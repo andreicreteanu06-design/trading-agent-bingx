@@ -119,15 +119,48 @@ class Backtester:
       - cu pozitie deschisa: verificam stop/TP pe high/low ale lumanarii curente.
     """
 
-    def __init__(self, cfg) -> None:
+    def __init__(
+        self,
+        cfg,
+        signal_fn=None,
+        strategy_cfg=None,
+        min_bars: int | None = None,
+        max_bars_in_trade: int | None = None,
+        limit_valid_bars: int | None = None,
+    ) -> None:
+        """
+        `signal_fn(symbol, htf_slice, ltf_slice) -> Signal | None` permite
+        rularea altei strategii decat cea implicita, fara sa duplicam motorul.
+        Contractul e intentionat ingust: functia primeste DOAR felii de date
+        care se termina la bara curenta, deci nu are cum sa vada in viitor.
+
+        `max_bars_in_trade` impune un buget de timp. Implicit None = fara limita,
+        cum a fost pana acum. Pentru strategiile intraday e obligatoriu: fara el
+        masori o strategie care poate tine pozitia zile intregi, nu pe cea pe
+        care chiar intentionezi sa o tranzactionezi.
+        """
         self.cfg = cfg
+        self.strategy_cfg = strategy_cfg if strategy_cfg is not None else cfg.strategy
+        self.signal_fn = signal_fn if signal_fn is not None else self._default_signal_fn
+        self._min_bars_override = min_bars
+        self.max_bars_in_trade = max_bars_in_trade
+        # Cate lumanari asteapta un ordin limit inainte sa fie anulat. None =
+        # executie la piata pe open-ul urmatoarei lumanari (comportamentul vechi).
+        self.limit_valid_bars = limit_valid_bars
+
+    def _default_signal_fn(self, symbol, htf_slice, ltf_slice):
+        return signal_builder.build_signal(
+            symbol, htf_slice, ltf_slice, self.strategy_cfg, self.cfg.risk
+        )
 
     # -------------------------------------------------------- runner principal
     def run(self, symbol: str, htf: pd.DataFrame, ltf: pd.DataFrame,
             starting_equity: float = 1000.0) -> BacktestReport:
         risk = self.cfg.risk
-        strat = self.cfg.strategy
-        min_bars = max(strat.ema_slow, strat.adx_period * 4) + 5
+        strat = self.strategy_cfg
+        min_bars = self._min_bars_override or (
+            max(strat.ema_slow, strat.adx_period * 4) + 5
+        )
 
         htf_sorted = htf.sort_values("timestamp").reset_index(drop=True)
         ltf_sorted = ltf.sort_values("timestamp").reset_index(drop=True)
@@ -136,6 +169,7 @@ class Backtester:
         equity_curve: list[tuple[int, float]] = [(int(ltf_sorted.iloc[0]["timestamp"]), equity)]
         trades: list[ClosedTrade] = []
         open_trade: dict | None = None
+        pending: dict | None = None  # ordin limit care asteapta in carte
 
         # Ca sa nu spargem incapsularea, folosim aceleasi functii ca live.
         for i in range(min_bars, len(ltf_sorted) - 1):
@@ -155,26 +189,78 @@ class Backtester:
                         trades.append(closed)
                         open_trade = None
 
+            # --- 1b. bugetul de timp. Se verifica DUPA stop/TP, pentru ca daca
+            # ambele s-ar declansa pe aceeasi lumanare, stopul are prioritate -
+            # varianta pesimista este singura onesta cand nu stim ordinea ticks.
+            if open_trade is not None and self.max_bars_in_trade is not None:
+                open_trade["bars_held"] = open_trade.get("bars_held", 0) + 1
+                if open_trade["bars_held"] >= self.max_bars_in_trade:
+                    exit_info = {
+                        "exit_time": bar["datetime"],
+                        "exit_price": float(bar["close"]),
+                        "reason": f"timp expirat ({open_trade['bars_held']} lumanari)",
+                        "fraction_closed": 1.0 - open_trade["fraction_closed"],
+                    }
+                    closed, equity = self._close_trade(
+                        open_trade, exit_info, equity, force_full=True
+                    )
+                    equity_curve.append((ts, equity))
+                    if closed is not None:
+                        trades.append(closed)
+                    open_trade = None
+
+            # --- 1c. ordinul limit in asteptare: se executa daca pretul chiar
+            # revine la nivel. Verificarea vine DUPA iesiri, ca un trade sa nu
+            # se deschida si sa se inchida in aceeasi lumanare - nu stim ordinea
+            # ticksurilor, iar presupunerea optimista ar inventa castiguri.
+            if open_trade is None and pending is not None:
+                sig = pending["signal"]
+                price = pending["price"]
+                touched = (
+                    float(bar["low"]) <= price
+                    if sig.side == "long"
+                    else float(bar["high"]) >= price
+                )
+                if touched:
+                    open_trade = self._open_trade(
+                        sig, bar, equity, fill_price=price, is_maker=True
+                    )
+                    pending = None
+                    if open_trade is not None:
+                        equity -= open_trade["fees_paid"]
+                else:
+                    pending["bars_left"] -= 1
+                    if pending["bars_left"] <= 0:
+                        pending = None  # setup expirat, pretul a plecat fara noi
+
             # --- 2. daca suntem flat, cautam semnal folosind datele pana la ACEASTA lumanare
-            if open_trade is None:
+            if open_trade is None and pending is None:
                 htf_slice = htf_sorted[htf_sorted["timestamp"] <= ts]
                 ltf_slice = ltf_sorted.iloc[: i + 1]
 
                 if len(htf_slice) < min_bars:
                     continue
 
-                signal = signal_builder.build_signal(
-                    symbol, htf_slice, ltf_slice, strat, risk
-                )
+                signal = self.signal_fn(symbol, htf_slice, ltf_slice)
                 if signal is None:
                     continue
 
-                # Intrare la open-ul lumanarii URMATOARE, cu slippage.
-                next_bar = ltf_sorted.iloc[i + 1]
-                open_trade = self._open_trade(signal, next_bar, equity)
-                if open_trade is not None:
-                    # Comisionul de intrare se plateste imediat, nu la iesire.
-                    equity -= open_trade["fees_paid"]
+                if self.limit_valid_bars is not None:
+                    # Ordin limit: nu intram acum, punem ordinul in carte si
+                    # asteptam ca pretul sa vina la el. Daca nu vine, nu
+                    # tranzactionam - a nu alerga dupa pret e jumatate din setup.
+                    pending = {
+                        "signal": signal,
+                        "price": float(signal.entry),
+                        "bars_left": self.limit_valid_bars,
+                    }
+                else:
+                    # Intrare la open-ul lumanarii URMATOARE, cu slippage.
+                    next_bar = ltf_sorted.iloc[i + 1]
+                    open_trade = self._open_trade(signal, next_bar, equity)
+                    if open_trade is not None:
+                        # Comisionul de intrare se plateste imediat, nu la iesire.
+                        equity -= open_trade["fees_paid"]
 
         # Daca la sfarsit ramane o pozitie deschisa, o inchidem la ultimul close
         # (marcare la piata, ca sa nu falsificam metricile ignorand-o).
@@ -201,14 +287,27 @@ class Backtester:
         )
 
     # --------------------------------------------------------------- executie
-    def _open_trade(self, signal, entry_bar, equity: float) -> dict:
+    def _open_trade(self, signal, entry_bar, equity: float,
+                    fill_price: float | None = None, is_maker: bool = False) -> dict:
+        """
+        `fill_price` dat = executie pe ordin LIMIT: pretul e garantat (de aceea
+        am si asteptat pentru el) si nu exista slippage - noi am fost
+        lichiditatea, nu am luat-o pe a altcuiva.
+
+        Fara `fill_price` = executie la piata pe open-ul urmatoarei lumanari, cu
+        slippage advers. Comportamentul de dinainte, pastrat pentru strategiile
+        care chiar intra la piata.
+        """
         risk = self.cfg.risk
         app = self.cfg
 
-        # Slippage adverse: long plateste mai mult, short primeste mai putin.
-        raw_entry = float(entry_bar["open"])
-        slip = raw_entry * app.slippage
-        entry = raw_entry + slip if signal.side == "long" else raw_entry - slip
+        if fill_price is not None:
+            entry = float(fill_price)
+        else:
+            # Slippage adverse: long plateste mai mult, short primeste mai putin.
+            raw_entry = float(entry_bar["open"])
+            slip = raw_entry * app.slippage
+            entry = raw_entry + slip if signal.side == "long" else raw_entry - slip
 
         # Distanta de risc RAMANE cea din semnal (calculata pe close-ul t).
         # Nu recalculam mai bine dupa slippage - realitatea nu iti da acest cadou.
@@ -227,7 +326,7 @@ class Backtester:
             notional = equity * leverage
             size = notional / entry
 
-        entry_fee = notional * app.taker_fee
+        entry_fee = notional * (app.maker_fee if is_maker else app.taker_fee)
 
         return {
             "symbol": signal.symbol,

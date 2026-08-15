@@ -22,6 +22,8 @@ from ai.claude_analyzer import ClaudeAnalyzer
 from alerts.telegram_bot import TelegramNotifier
 from exchange.bingx_client import BingXClient
 from news.blackout import NewsBlackout, VolatilityGuard
+from news import sentiment
+from news.sentiment import SentimentConfig
 from risk.gate import CircuitGate, RegimeGate
 from risk.trade_recorder import TradeRecorder
 from strategy import indicators, risk_engine, signal_builder
@@ -65,6 +67,11 @@ class ScanResult:
     # Circuit breaker (risk/circuit_breaker.py) - limita pe P&L realizat.
     circuit_ok: bool = True
     circuit_status: str = ""
+    # Sentiment de piata (news/sentiment.py) - blocheaza DIRECTII, nu scanarea.
+    sentiment_available: bool = False
+    sentiment_blocked_sides: list[str] = field(default_factory=list)
+    sentiment_reasons: list[str] = field(default_factory=list)
+    sentiment_data: dict = field(default_factory=dict)
     circuit_reason: str = ""
     circuit_metrics: dict = field(default_factory=dict)
     # Pozitii detectate ca inchise in acest ciclu si scrise in jurnal.
@@ -96,6 +103,10 @@ class ScanResult:
             "regime_reason": self.regime_reason,
             "circuit_ok": self.circuit_ok,
             "circuit_status": self.circuit_status,
+            "sentiment_available": self.sentiment_available,
+            "sentiment_blocked_sides": self.sentiment_blocked_sides,
+            "sentiment_reasons": self.sentiment_reasons,
+            "sentiment_data": self.sentiment_data,
             "circuit_reason": self.circuit_reason,
             "circuit_metrics": self.circuit_metrics,
             "closed_trades": self.closed_trades,
@@ -138,6 +149,8 @@ class Scanner:
             KillSwitchConfig(max_consecutive_losses=C.risk.max_consecutive_losses),
         )
         self.blackout = NewsBlackout()
+        self.sentiment_cfg = SentimentConfig()
+        self._sentiment = None
         self.vol_guard = VolatilityGuard()
 
         # Modulele de risc adaugate peste agent.
@@ -240,6 +253,33 @@ class Scanner:
             out.finished_at = datetime.now(timezone.utc).isoformat()
             return out
 
+        # --- sentiment: ce DIRECTII sunt permise acum?
+        #
+        # Spre deosebire de portile de mai sus, asta nu opreste scanarea. Blocheaza
+        # o directie, nu activitatea: intr-o piata cu funding fierbinte long-urile
+        # sunt periculoase, dar short-urile devin mai atractive, nu mai putin.
+        #
+        # Se evalueaza O SINGURA DATA pe scanare, nu per simbol - Fear & Greed si
+        # funding-ul sunt marimi de piata, iar apelurile de retea nu au ce cauta
+        # intr-o bucla peste simboluri.
+        self._sentiment = None
+        if self.sentiment_cfg.enabled:
+            try:
+                funding = self.client.fetch_funding_rates(
+                    list(C.regime.funding_symbols)
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Funding indisponibil pentru sentiment: %s", exc)
+                funding = {}
+
+            self._sentiment = sentiment.evaluate(
+                self.sentiment_cfg, funding_rates=funding
+            )
+            out.sentiment_available = self._sentiment.available
+            out.sentiment_blocked_sides = sorted(self._sentiment.blocked_sides)
+            out.sentiment_reasons = self._sentiment.reasons
+            out.sentiment_data = self._sentiment.data
+
         state = self._load_state()
 
         for symbol in self.symbols:
@@ -266,6 +306,15 @@ class Scanner:
         signal = signal_builder.build_signal(symbol, htf, ltf, C.strategy, C.risk)
         if signal is None:
             return SymbolResult(symbol, "no_setup", "niciun setup valabil")
+
+        # --- poarta de sentiment, aplicata DUPA ce stim directia.
+        # Blocheaza o directie, nu simbolul: cand funding-ul e fierbinte,
+        # long-urile sunt periculoase iar short-urile nu sunt.
+        if self._sentiment is not None and not self._sentiment.allows(signal.side):
+            motive = "; ".join(self._sentiment.reasons) or "sentiment nefavorabil"
+            return SymbolResult(
+                symbol, "skipped", f"sentiment blocheaza {signal.side}: {motive}"
+            )
 
         trade = risk_engine.evaluate(signal, equity, positions, C.risk)
 
