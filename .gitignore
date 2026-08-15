@@ -1,6 +1,16 @@
 .env
 __pycache__/
 *.pyc
-logs/*.jsonl
+logs/
+*.log
+*.err
+graphify-out/
+web-dev.log
+server.log
+dash.log
+dash.err
 .venv/
 venv/
+.next/
+node_modules/
+*.tsbuildinfo
