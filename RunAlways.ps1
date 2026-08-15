@@ -62,48 +62,45 @@ function Write-Log {
 }
 
 function Start-ProcessWithLogging {
+    <#
+        Starts a child process with stdout/stderr redirected straight to files.
+
+        Note on the approach: an earlier version read the streams manually and
+        pumped them into Start-Job background jobs. That cannot work — Process
+        stream objects are not serializable across runspaces, so the jobs fail
+        the moment they receive them. Letting the OS write the files directly is
+        both simpler and more reliable, and it survives this script crashing.
+
+        Log files are truncated when a process restarts. That is intentional:
+        the restart history lives in launcher.log, and these files are meant to
+        show the CURRENT process's output, not an ever-growing archive. The OI
+        logger's actual data goes to logs\positioning.jsonl and is unaffected.
+
+        Pass Node tools as "npx.cmd", not "npx". On Windows `npx` resolves to
+        npx.ps1, a PowerShell script, and Start-Process refuses it with
+        "%1 is not a valid Win32 application" — the .cmd shim is a real
+        executable and is what actually launches.
+    #>
     param(
         [string]$Name,
         [string]$Exe,
-        [string]$Args,
+        # NOT named $Args: that collides with PowerShell's automatic $args
+        # variable, which under Set-StrictMode -Version Latest throws and takes
+        # the whole launcher down before any child process starts.
+        [string]$ArgLine,
         [string]$WorkingDir,
-        [string]$LogFile,
-        [ref]$ProcRef
+        [string]$LogFile
     )
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Exe
-    $psi.Arguments = $Args
-    $psi.WorkingDirectory = $WorkingDir
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-    $psi.StandardErrorEncoding  = [System.Text.Encoding]::UTF8
 
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $ProcRef.Value = $proc
+    $errFile = [System.IO.Path]::ChangeExtension($LogFile, ".err.log")
 
-    $outputReader = {
-        param($stream, $prefix)
-        while (-not $stream.EndOfStream) {
-            $line = $stream.ReadLine()
-            if ($line) {
-                $ts = Get-Date -Format "HH:mm:ss"
-                "$ts [$prefix] $line" | Out-File -FilePath $LogFile -Append -Encoding utf8
-            }
-        }
-    }
-
-    $stdoutJob = Start-Job -ScriptBlock $outputReader -ArgumentList $proc.StandardOutput, "OUT"
-    $stderrJob = Start-Job -ScriptBlock $outputReader -ArgumentList $proc.StandardError,  "ERR"
-
-    $proc.Exited.Register({
-        param($sender, $e)
-        Write-Log "$Name exited with code $($sender.ExitCode). Restarting in $RestartDelaySec sec..."
-        Start-Sleep -Seconds $RestartDelaySec
-        # restart logic handled by outer loop
-    })
+    $proc = Start-Process -FilePath $Exe `
+        -ArgumentList $ArgLine `
+        -WorkingDirectory $WorkingDir `
+        -RedirectStandardOutput $LogFile `
+        -RedirectStandardError $errFile `
+        -WindowStyle Hidden `
+        -PassThru
 
     return $proc
 }
@@ -117,36 +114,40 @@ $nextProc   = $null
 $oiLoggerProc = $null
 $running = $true
 
-# ---- Clean shutdown on Ctrl+C or Task Scheduler termination ----
-$shutdown = {
-    Write-Log "Shutdown signal received. Stopping processes..."
-    $running = $false
-    if ($pythonProc -and -not $pythonProc.HasExited)   { $pythonProc.Kill() }
-    if ($nextProc   -and -not $nextProc.HasExited)     { $nextProc.Kill() }
-    if ($oiLoggerProc -and -not $oiLoggerProc.HasExited) { $oiLoggerProc.Kill() }
-    Write-Log "=== LAUNCHER STOPPED ==="
-    exit 0
+# ---- Clean shutdown ----
+#
+# Note: an earlier version called [System.Console]::CancelKeyPress.Add(...).
+# That throws — CancelKeyPress is an event, not a property, and PowerShell
+# cannot subscribe to it with .Add(). It killed the launcher before a single
+# process was started, which is why nothing ever ran. A try/finally around the
+# supervision loop covers every exit path (Ctrl+C, Task Scheduler stop, error)
+# without needing to hook console events at all.
+function Stop-Children {
+    Write-Log "Stopping child processes..."
+    foreach ($p in @($pythonProc, $nextProc, $oiLoggerProc)) {
+        if ($p -and -not $p.HasExited) {
+            try { $p.Kill() } catch { }
+        }
+    }
 }
 
-[System.Console]::CancelKeyPress.Add($shutdown)
-Register-EngineEvent -SourceIdentifier "PowerShell.Exiting" -Action $shutdown | Out-Null
-
 # ---- Main supervision loop ----
+try {
 while ($running) {
     # --- Python API ---
     if (-not $pythonProc -or $pythonProc.HasExited) {
         Write-Log "Starting Python API on ${ApiHost}:$PythonPort..."
         $pythonProc = Start-ProcessWithLogging -Name "PythonAPI" `
-            -Exe "python" -Args "-m app.server --host $ApiHost --port $PythonPort --no-browser" `
-            -WorkingDir $ScriptDir -LogFile $PythonLog -ProcRef ([ref]$pythonProc)
+            -Exe "python" -ArgLine "-m app.server --host $ApiHost --port $PythonPort --no-browser" `
+            -WorkingDir $ScriptDir -LogFile $PythonLog
     }
 
     # --- Next.js production server ---
     if (-not $nextProc -or $nextProc.HasExited) {
         Write-Log "Starting Next.js on ${NextHost}:$NextPort..."
         $nextProc = Start-ProcessWithLogging -Name "NextJS" `
-            -Exe "npx" -Args "next start -H $NextHost -p $NextPort" `
-            -WorkingDir (Join-Path $ScriptDir "web") -LogFile $NextLog -ProcRef ([ref]$nextProc)
+            -Exe "npx.cmd" -ArgLine "next start -H $NextHost -p $NextPort" `
+            -WorkingDir (Join-Path $ScriptDir "web") -LogFile $NextLog
     }
 
     # --- Open-interest / funding logger ---
@@ -155,12 +156,15 @@ while ($running) {
     if (-not $oiLoggerProc -or $oiLoggerProc.HasExited) {
         Write-Log "Starting OI/funding logger..."
         $oiLoggerProc = Start-ProcessWithLogging -Name "OiLogger" `
-            -Exe "python" -Args "tools\oi_logger.py --loop" `
-            -WorkingDir $ScriptDir -LogFile $OiLoggerLog -ProcRef ([ref]$oiLoggerProc)
+            -Exe "python" -ArgLine "tools\oi_logger.py --loop" `
+            -WorkingDir $ScriptDir -LogFile $OiLoggerLog
     }
 
     # Wait a bit before checking again
     Start-Sleep -Seconds 10
 }
-
-Write-Log "=== LAUNCHER STOPPED ==="
+}
+finally {
+    Stop-Children
+    Write-Log "=== LAUNCHER STOPPED ==="
+}

@@ -44,7 +44,7 @@ if (-not $isAdmin) {
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$LauncherPath`""
 
-$trigger = New-ScheduledTaskTrigger -AtLogOn -Delay "00:02:00"
+$trigger = New-ScheduledTaskTrigger -AtLogOn -RandomDelay "00:02:00"
 
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
@@ -66,8 +66,8 @@ try {
         -Principal $principal `
         -Description "BingX Trading Agent: Python API + Next.js dashboard (production). Runs at logon, restarts on crash. Access via Tailscale." `
         -Force
-    Write-Host "✓ Task '$TaskName' registered successfully."
-    Write-Host "  Runs at user logon (2 min delay), hidden window."
+    Write-Host "[OK] Task '$TaskName' registered successfully."
+    Write-Host "  Runs at user logon (up to 2 min random delay), hidden window."
     Write-Host "  To test now: Start-ScheduledTask -TaskName '$TaskName'"
     Write-Host "  To view: Get-ScheduledTask -TaskName '$TaskName' | Get-ScheduledTaskInfo"
     Write-Host "  To remove: Unregister-ScheduledTask -TaskName '$TaskName' -Confirm:`$false"
