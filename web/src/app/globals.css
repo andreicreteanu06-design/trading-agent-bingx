@@ -1,0 +1,272 @@
+@import "tailwindcss";
+
+/* ==================================================================
+   Consola Agent BingX. Sistem de tokeni conform web/DESIGN.md.
+
+   Regula centrala (§4): singurele culori saturate de pe ecran sunt
+   cele care poarta sens de piata. Chrome-ul e complet acromatic.
+   ================================================================== */
+
+:root {
+  /* --- suprafete (§4) --- */
+  --surface-void: #08090b;
+  --surface-rail: #0e1013;
+  --surface-raised: #14171c;
+  --line: #1e2228;
+  --line-lit: #2a2f37; /* muchia de sus, cea care prinde lumina */
+
+  /* --- text --- */
+  --text-hi: #e8eaed;
+  --text-mid: #9aa1ab; /* 7.6:1 pe void */
+  /* 5.3:1 pe void, 4.8:1 pe celula. eticheta de 10px are nevoie de 4.5:1 (§11),
+     iar tonul tertiar e cel mai usor de coborat din greseala sub prag. */
+  --text-lo: #7d8590;
+
+  /* --- date. singurele saturate --- */
+  --long: #2ee6a8;
+  --short: #ff4d5e;
+  --warn: #f5a524;
+
+  /* --- elevatie (§8): o singura sursa de lumina, de sus --- */
+  --elev-1: inset 0 1px 0 rgb(255 255 255 / 0.055), 0 1px 2px rgb(0 0 0 / 0.6);
+  --elev-2: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 1px 2px rgb(0 0 0 / 0.6),
+    0 8px 24px -8px rgb(0 0 0 / 0.7);
+
+  /* --- raze blocate (§8). nimic altceva --- */
+  --r-panel: 14px;
+  --r-cell: 8px;
+
+  /* --- curbe (§9) --- */
+  --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-flow: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* --- compat shadcn: card.tsx depinde de bg-card/text-card-foreground --- */
+  --radius: var(--r-panel);
+  --background: var(--surface-void);
+  --foreground: var(--text-hi);
+  --card: var(--surface-rail);
+  --card-foreground: var(--text-hi);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text-hi);
+  --primary: var(--text-hi);
+  --primary-foreground: #08090b;
+  --secondary: var(--surface-raised);
+  --secondary-foreground: var(--text-hi);
+  --muted: var(--surface-raised);
+  --muted-foreground: var(--text-mid);
+  --accent: var(--surface-raised);
+  --accent-foreground: var(--text-hi);
+  --destructive: var(--short);
+  --destructive-foreground: #08090b;
+  --success: var(--long);
+  --success-foreground: #08090b;
+  --warning: var(--warn);
+  --warning-foreground: #08090b;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--text-mid);
+}
+
+@theme inline {
+  --color-void: var(--surface-void);
+  --color-rail: var(--surface-rail);
+  --color-raised: var(--surface-raised);
+  --color-line: var(--line);
+  --color-line-lit: var(--line-lit);
+
+  --color-hi: var(--text-hi);
+  --color-mid: var(--text-mid);
+  --color-lo: var(--text-lo);
+
+  --color-long: var(--long);
+  --color-short: var(--short);
+  --color-warn: var(--warn);
+
+  --shadow-elev-1: var(--elev-1);
+  --shadow-elev-2: var(--elev-2);
+
+  --radius-panel: var(--r-panel);
+  --radius-cell: var(--r-cell);
+
+  --ease-snap: var(--ease-snap);
+  --ease-flow: var(--ease-flow);
+
+  /* compat shadcn */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-sm: var(--r-cell);
+  --radius-md: var(--r-cell);
+  --radius-lg: var(--r-panel);
+  --radius-xl: var(--r-panel);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  /* sursa de lumina a paginii: ambient de sus, nu gradient de accent (§12) */
+  background: linear-gradient(180deg, #0c0d10 0px, var(--surface-void) 420px)
+    no-repeat var(--surface-void);
+  color: var(--text-hi);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ------------------------------------------------------------------
+   §5. Toate cifrele sunt tabulare. Fara asta randul tresare la
+   fiecare poll de 3s.
+   ------------------------------------------------------------------ */
+.num,
+input,
+table,
+[data-num] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ------------------------------------------------------------------
+   §12. Materialul. Un panou e un obiect fizic: muchia de sus prinde
+   lumina, cea de jos e in umbra.
+   ------------------------------------------------------------------ */
+.panel {
+  background: var(--surface-rail);
+  border: 1px solid var(--line);
+  border-top-color: var(--line-lit);
+  border-radius: var(--r-panel);
+  box-shadow: var(--elev-2);
+}
+
+.cell {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-top-color: color-mix(in oklab, var(--line-lit) 70%, var(--line));
+  border-radius: var(--r-cell);
+  box-shadow: var(--elev-1);
+}
+
+/* micro-eticheta de instrument (§5) */
+.label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-lo);
+}
+
+/* ------------------------------------------------------------------
+   §9. Flash-on-change: singura animatie care ruleaza des, si ruleaza
+   doar cand s-a schimbat efectiv o cifra.
+   ------------------------------------------------------------------ */
+@keyframes flash-up {
+  from {
+    color: var(--long);
+  }
+  to {
+    color: inherit;
+  }
+}
+@keyframes flash-down {
+  from {
+    color: var(--short);
+  }
+  to {
+    color: inherit;
+  }
+}
+[data-flash="up"] {
+  animation: flash-up 320ms var(--ease-snap);
+}
+[data-flash="down"] {
+  animation: flash-down 320ms var(--ease-snap);
+}
+
+/* sweep-ul de scan: progres real, nu decor */
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+.sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 33%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.14),
+    transparent
+  );
+  animation: sweep 1.4s linear infinite;
+}
+
+/* §10. tabelele lungi nu se randeaza cat sunt in afara ecranului */
+.long-list {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
+}
+
+/* scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #232830;
+  border-radius: 999px;
+  border: 2px solid var(--surface-void);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* focus vizibil, acromatic */
+:focus-visible {
+  outline: 2px solid var(--text-mid);
+  outline-offset: 2px;
+}
+
+/* §9 / §11 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .sweep::after {
+    display: none;
+  }
+}

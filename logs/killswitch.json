@@ -1,0 +1,11 @@
+{
+  "day": "2026-08-14",
+  "day_start_equity": 1000.0,
+  "realized_pnl_today": 0.0,
+  "trades_today": 1,
+  "consecutive_losses": 0,
+  "halted": false,
+  "halt_reason": "",
+  "halted_at": "",
+  "peak_equity": 1000.0
+}

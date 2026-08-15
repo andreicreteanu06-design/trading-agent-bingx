@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<title>Agent BingX</title>
+<style>
+:root{
+  --bg:#0e1116; --panel:#161b22; --panel2:#1c2430; --line:#252c38;
+  --text:#e6edf3; --dim:#8b949e; --dimmer:#5b6672;
+  --green:#3fb950; --red:#f85149; --amber:#d29922; --blue:#58a6ff;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:0 0 40px; -webkit-text-size-adjust:100%;
+}
+header{
+  position:sticky; top:0; z-index:10; background:rgba(14,17,22,.92);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--line);
+  padding:12px 16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+h1{font-size:16px; margin:0; font-weight:600; letter-spacing:.3px}
+.wrap{max-width:1000px; margin:0 auto; padding:16px}
+.grid{display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px}
+.card h2{font-size:11px; text-transform:uppercase; letter-spacing:.9px; color:var(--dim);
+  margin:0 0 10px; font-weight:600}
+.big{font-size:26px; font-weight:600; letter-spacing:-.5px}
+.sub{font-size:13px; color:var(--dim); margin-top:4px}
+.dot{width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:7px;
+  vertical-align:1px; flex:none}
+.ok{background:var(--green)} .bad{background:var(--red)} .warn{background:var(--amber)}
+.off{background:var(--dimmer)}
+button{
+  font:inherit; font-weight:600; color:#fff; background:var(--blue); border:0;
+  border-radius:8px; padding:9px 16px; cursor:pointer;
+}
+button:disabled{opacity:.45; cursor:default}
+button.ghost{background:transparent; border:1px solid var(--line); color:var(--text); font-weight:500}
+.row{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.spacer{flex:1}
+.kv{display:flex; justify-content:space-between; gap:12px; padding:5px 0;
+  border-bottom:1px solid var(--line); font-size:14px}
+.kv:last-child{border-bottom:0}
+.kv span:first-child{color:var(--dim)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums}
+.pill{font-size:11px; padding:2px 9px; border-radius:999px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.5px}
+.p-long{background:rgba(63,185,80,.15); color:var(--green)}
+.p-short{background:rgba(248,81,73,.15); color:var(--red)}
+.sig{background:var(--panel); border:1px solid rgba(63,185,80,.28);
+  border-radius:10px; padding:14px 16px; margin-bottom:10px}
+.sig.short{border-color:rgba(248,81,73,.28)}
+.sig.muted{border-color:var(--line); opacity:.75}
+.levels{display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:10px;
+  margin:12px 0 0; font-size:13px}
+.levels div span{display:block; color:var(--dim); font-size:11px; text-transform:uppercase;
+  letter-spacing:.6px; margin-bottom:2px}
+.note{font-size:13px; color:var(--dim); margin-top:10px}
+.banner{border-radius:10px; padding:12px 16px; margin-bottom:12px; font-size:14px;
+  border:1px solid; display:flex; gap:10px; align-items:flex-start}
+.banner.red{background:rgba(248,81,73,.09); border-color:rgba(248,81,73,.35)}
+.banner.amber{background:rgba(210,153,34,.09); border-color:rgba(210,153,34,.35)}
+h3.section{font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--dim);
+  margin:26px 0 10px; font-weight:600}
+table{width:100%; border-collapse:collapse; font-size:13px}
+th{text-align:left; color:var(--dim); font-weight:600; font-size:11px; text-transform:uppercase;
+  letter-spacing:.6px; padding:6px 8px; border-bottom:1px solid var(--line)}
+td{padding:7px 8px; border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+.scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+.empty{color:var(--dimmer); font-size:14px; padding:18px 0; text-align:center}
+.spin{display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+label.chk{display:flex; align-items:center; gap:7px; font-size:14px; color:var(--dim); cursor:pointer}
+input[type=checkbox]{width:17px; height:17px; accent-color:var(--blue)}
+.warnbox{background:var(--panel2); border-radius:8px; padding:10px 12px; margin-top:10px;
+  font-size:13px; color:var(--dim)}
+.warnbox b{color:var(--amber)}
+footer{text-align:center; color:var(--dimmer); font-size:12px; margin-top:30px; padding:0 16px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Agent BingX</h1>
+  <span id="conn" class="sub"><span class="dot off"></span>conectare...</span>
+  <span class="spacer"></span>
+  <label class="chk"><input type="checkbox" id="auto"> auto 15m</label>
+  <button id="scan">Scanează acum</button>
+</header>
+
+<div class="wrap">
+
+  <div id="banners"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Capital</h2>
+      <div class="big mono" id="equity">—</div>
+      <div class="sub" id="equity-src">se încarcă</div>
+    </div>
+    <div class="card">
+      <h2>Kill-switch</h2>
+      <div class="big" id="ks-state">—</div>
+      <div class="sub" id="ks-detail"></div>
+    </div>
+    <div class="card">
+      <h2>Fereastră știri</h2>
+      <div class="big" id="bo-state">—</div>
+      <div class="sub" id="bo-detail"></div>
+    </div>
+    <div class="card">
+      <h2>Risc per tranzacție</h2>
+      <div class="big mono" id="risk">—</div>
+      <div class="sub" id="risk-detail"></div>
+    </div>
+  </div>
+
+  <h3 class="section">Ultima scanare <span id="scan-time" style="text-transform:none;letter-spacing:0"></span></h3>
+  <div id="signals"><div class="empty">Nicio scanare încă. Apasă „Scanează acum”.</div></div>
+
+  <h3 class="section">Stare sistem</h3>
+  <div class="card" id="sys"></div>
+
+  <h3 class="section">Istoric semnale</h3>
+  <div class="card scroll"><table id="history"><tbody><tr><td class="empty">—</td></tr></tbody></table></div>
+
+  <h3 class="section">Rezultate backtest</h3>
+  <div class="card scroll"><table id="backtest"><tbody><tr><td class="empty">—</td></tr></tbody></table></div>
+
+</div>
+
+<footer>
+  Agentul nu trimite ordine. Execuția rămâne manuală, la tine în BingX.<br>
+  Verifică fiecare semnal înainte de a-l executa.
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (n, d = 2) => (n === null || n === undefined || isNaN(n)) ? "—" :
+  Number(n).toLocaleString("ro-RO", {minimumFractionDigits: d, maximumFractionDigits: d});
+const price = n => {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  const a = Math.abs(n);
+  return fmt(n, a >= 1000 ? 1 : a >= 10 ? 2 : a >= 1 ? 3 : 5);
+};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const localTime = iso => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString("ro-RO", {day:"2-digit", month:"2-digit",
+    hour:"2-digit", minute:"2-digit"});
+};
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(path + " -> " + r.status);
+  return r.json();
+}
+
+/* ------------------------------------------------------------------ status */
+let scanningBefore = false;
+
+function renderStatus(s) {
+  $("conn").innerHTML = '<span class="dot ok"></span>conectat';
+
+  // capital
+  if (s.equity === null || s.equity === undefined) {
+    $("equity").textContent = "—";
+    $("equity-src").textContent = "fără chei API (dimensionare pe 1000 USDT presupuși)";
+  } else {
+    $("equity").textContent = fmt(s.equity) + " USDT";
+    $("equity-src").textContent = "sold real din contul BingX";
+  }
+
+  // kill-switch
+  const ks = s.kill_switch;
+  $("ks-state").innerHTML = ks.allowed
+    ? '<span class="dot ok"></span>Activ'
+    : '<span class="dot bad"></span>OPRIT';
+  $("ks-detail").textContent = ks.allowed
+    ? `azi ${ks.trades_today}/${ks.max_trades} tranzacții · ${ks.consecutive_losses}/${ks.max_consecutive} pierderi la rând`
+    : ks.reason;
+
+  // blackout
+  const bo = s.blackout;
+  $("bo-state").innerHTML = bo.clear
+    ? '<span class="dot ok"></span>Liber'
+    : '<span class="dot warn"></span>Blocat';
+  $("bo-detail").textContent = bo.clear
+    ? "nicio știre de impact în fereastra curentă"
+    : bo.reasons.join(" · ") + (bo.until ? ` — liber de la ${bo.until}` : "");
+
+  // risc
+  $("risk").textContent = (s.risk.risk_per_trade * 100).toFixed(1) + "%";
+  $("risk-detail").textContent =
+    `levier max ${s.risk.max_leverage}x · max ${s.risk.max_open_positions} poziții · R:R min ${s.risk.min_risk_reward}`;
+
+  // bannere
+  const b = [];
+  if (!ks.allowed) b.push(`<div class="banner red"><span class="dot bad" style="margin-top:6px"></span>
+    <div><b>Kill-switch declanșat.</b> ${esc(ks.reason)}<br>
+    <span style="color:var(--dim)">Nu se generează semnale până la resetare.</span></div></div>`);
+  if (!bo.clear) b.push(`<div class="banner amber"><span class="dot warn" style="margin-top:6px"></span>
+    <div><b>Fereastră de știri.</b> ${esc(bo.reasons.join("; "))}<br>
+    <span style="color:var(--dim)">Spread-urile se lărgesc și stop-urile nu se execută la prețul cerut.</span></div></div>`);
+  if (s.last_error) b.push(`<div class="banner red"><span class="dot bad" style="margin-top:6px"></span>
+    <div><b>Eroare la ultima scanare.</b> ${esc(s.last_error)}</div></div>`);
+  $("banners").innerHTML = b.join("");
+
+  // stare sistem
+  const line = (k, ok, txt) =>
+    `<div class="kv"><span>${k}</span><span><span class="dot ${ok ? "ok" : "off"}"></span>${esc(txt)}</span></div>`;
+  $("sys").innerHTML =
+    line("Cont BingX", s.bingx_authenticated, s.bingx_authenticated ? "conectat" : "doar date publice") +
+    line("Analiză Claude", s.claude_enabled, s.claude_enabled ? "pornită" : "oprită") +
+    line("Alerte Telegram", s.telegram_enabled, s.telegram_enabled ? "pornite" : "oprite") +
+    `<div class="kv"><span>Simboluri</span><span class="mono">${esc(s.symbols.join(", "))}</span></div>` +
+    `<div class="kv"><span>Timeframe</span><span class="mono">${esc(s.risk.htf)} trend · ${esc(s.risk.ltf)} intrare</span></div>` +
+    (s.invalid_symbols.length
+      ? `<div class="kv"><span>Ignorate</span><span class="mono" style="color:var(--amber)">${esc(s.invalid_symbols.join(", "))}</span></div>`
+      : "");
+
+  // buton + auto
+  $("scan").disabled = s.scanning;
+  $("scan").innerHTML = s.scanning ? '<span class="spin"></span> Scanez…' : "Scanează acum";
+  if (document.activeElement !== $("auto")) $("auto").checked = s.auto_enabled;
+
+  if (scanningBefore && !s.scanning) { loadScan(); loadHistory(); }
+  scanningBefore = s.scanning;
+}
+
+/* ---------------------------------------------------------------- semnale */
+function signalCard(r) {
+  const t = r.trade, sg = r.signal;
+
+  if (r.status !== "approved") {
+    const label = {
+      rejected:    ["Respins de managerul de risc", "warn"],
+      claude_skip: ["Claude recomandă să sari", "warn"],
+      no_setup:    ["Niciun setup", "off"],
+      skipped:     ["Sărit", "off"],
+      error:       ["Eroare", "bad"],
+    }[r.status] || ["—", "off"];
+    return `<div class="sig muted">
+      <div class="row"><b class="mono">${esc(r.symbol)}</b>
+        <span class="sub"><span class="dot ${label[1]}"></span>${label[0]}</span></div>
+      ${r.detail ? `<div class="note">${esc(r.detail)}</div>` : ""}
+    </div>`;
+  }
+
+  const tps = (t.take_profits || []).map((p, i) =>
+    `<div><span>TP${i + 1}</span><b class="mono">${price(p)}</b></div>`).join("");
+  const an = r.analysis;
+
+  return `<div class="sig ${t.side}">
+    <div class="row">
+      <b class="mono" style="font-size:16px">${esc(r.symbol)}</b>
+      <span class="pill p-${t.side}">${t.side === "long" ? "LONG" : "SHORT"}</span>
+      <span class="spacer"></span>
+      <span class="sub mono">scor ${fmt(sg.score, 0)}/100 · R:R ${fmt(sg.risk_reward, 2)}</span>
+    </div>
+    <div class="levels">
+      <div><span>Intrare</span><b class="mono">${price(t.entry)}</b></div>
+      <div><span>Stop</span><b class="mono" style="color:var(--red)">${price(t.stop_loss)}</b></div>
+      ${tps}
+      <div><span>Mărime</span><b class="mono">${fmt(t.position_size, 4)}</b></div>
+      <div><span>Levier</span><b class="mono">${fmt(t.leverage, 1)}x</b></div>
+      <div><span>Risc</span><b class="mono">${fmt(t.risk_amount)} USDT</b></div>
+      <div><span>Lichidare</span><b class="mono" style="color:var(--dim)">${price(t.liquidation_price)}</b></div>
+    </div>
+    ${sg.reasons?.length ? `<div class="note">${esc(sg.reasons.join(" · "))}</div>` : ""}
+    ${sg.warnings?.length ? `<div class="warnbox"><b>Atenție:</b> ${esc(sg.warnings.join(" · "))}</div>` : ""}
+    ${an ? `<div class="warnbox"><b style="color:var(--blue)">Claude (${esc(an.verdict)}, ${fmt(an.confidence, 0)}%):</b>
+      ${esc(an.reasoning)}${an.invalidation ? `<br><b>Invalidare:</b> ${esc(an.invalidation)}` : ""}</div>` : ""}
+  </div>`;
+}
+
+async function loadScan() {
+  const d = await api("/api/last-scan");
+  if (!d.started_at) return;
+
+  $("scan-time").innerHTML = `<span style="color:var(--dimmer);font-weight:400">${localTime(d.finished_at || d.started_at)}</span>`;
+
+  if (d.error) {
+    $("signals").innerHTML = `<div class="banner red"><div>${esc(d.error)}</div></div>`;
+    return;
+  }
+  if (!d.kill_switch_ok) {
+    $("signals").innerHTML = `<div class="empty">Scanare oprită de kill-switch — ${esc(d.kill_switch_reason)}</div>`;
+    return;
+  }
+  if (!d.blackout_ok) {
+    $("signals").innerHTML = `<div class="empty">Scanare oprită — fereastră de știri: ${esc(d.blackout_reasons.join("; "))}</div>`;
+    return;
+  }
+  if (!d.results.length) {
+    $("signals").innerHTML = `<div class="empty">Niciun rezultat.</div>`;
+    return;
+  }
+
+  const order = {approved: 0, claude_skip: 1, rejected: 2, no_setup: 3, skipped: 4, error: 5};
+  const sorted = [...d.results].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+  $("signals").innerHTML = sorted.map(signalCard).join("");
+}
+
+/* ---------------------------------------------------------------- istoric */
+async function loadHistory() {
+  const {signals} = await api("/api/history");
+  const tb = $("history").querySelector("tbody");
+  if (!signals.length) {
+    tb.innerHTML = `<tr><td class="empty">Niciun semnal înregistrat încă.</td></tr>`;
+    return;
+  }
+  const badge = {approved: "ok", rejected: "bad", claude_skip: "warn"};
+  tb.innerHTML =
+    `<tr><th>Când</th><th>Simbol</th><th>Direcție</th><th>Intrare</th><th>Stop</th><th>Stare</th></tr>` +
+    signals.map(s => {
+      const sg = s.signal || {};
+      return `<tr>
+        <td class="mono" style="color:var(--dim)">${localTime(s.ts)}</td>
+        <td class="mono">${esc(sg.symbol || "")}</td>
+        <td>${sg.side ? `<span class="pill p-${sg.side}">${sg.side}</span>` : "—"}</td>
+        <td class="mono">${price(sg.entry)}</td>
+        <td class="mono">${price(sg.stop_loss)}</td>
+        <td><span class="dot ${badge[s.status] || "off"}"></span>${esc(s.status)}</td>
+      </tr>`;
+    }).join("");
+}
+
+/* --------------------------------------------------------------- backtest */
+async function loadBacktest() {
+  const {reports} = await api("/api/backtest");
+  const tb = $("backtest").querySelector("tbody");
+  if (!reports.length) {
+    tb.innerHTML = `<tr><td class="empty">Niciun backtest rulat.
+      Rulează: <span class="mono">python -m backtest.engine</span></td></tr>`;
+    return;
+  }
+  const col = v => v > 0 ? "var(--green)" : v < 0 ? "var(--red)" : "var(--dim)";
+  tb.innerHTML =
+    `<tr><th>Simbol</th><th>Trades</th><th>Win rate</th><th>Expectanță</th><th>Randament</th><th>Max DD</th></tr>` +
+    reports.map(r => `<tr>
+      <td class="mono">${esc(r.symbol)}</td>
+      <td class="mono">${r.total_trades}</td>
+      <td class="mono">${fmt(r.win_rate * 100, 1)}%</td>
+      <td class="mono" style="color:${col(r.expectancy_r)}">${fmt(r.expectancy_r, 3)}R</td>
+      <td class="mono" style="color:${col(r.total_return_pct)}">${fmt(r.total_return_pct, 1)}%</td>
+      <td class="mono">${fmt(r.max_drawdown_pct, 1)}%</td>
+    </tr>`).join("") +
+    `<tr><td colspan="6" class="note" style="border:0">
+      Expectanța negativă înseamnă că strategia pierde bani pe perioada testată.
+      Nu o tranzacționa cu bani reali în forma actuală.</td></tr>`;
+}
+
+/* ------------------------------------------------------------------ ciclu */
+async function tick() {
+  try {
+    renderStatus(await api("/api/status"));
+  } catch {
+    $("conn").innerHTML = '<span class="dot bad"></span>server oprit';
+  }
+}
+
+$("scan").onclick = async () => {
+  $("scan").disabled = true;
+  $("scan").innerHTML = '<span class="spin"></span> Scanez…';
+  await api("/api/scan", {method: "POST"});
+  scanningBefore = true;
+  tick();
+};
+
+$("auto").onchange = async e => {
+  await api("/api/auto", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({enabled: e.target.checked, interval_min: 15}),
+  });
+  tick();
+};
+
+tick();
+loadScan();
+loadHistory();
+loadBacktest();
+setInterval(tick, 3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,411 @@
+
+> web@0.1.0 dev
+> next dev
+
+▲ Next.js 16.3.0 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.80.1:3000
+✓ Ready in 1080ms
+✓ Running next.config.ts took 386ms
+
+○ Compiling / ...
+ GET / 200 in 8.1s (next.js: 7.7s, application-code: 444ms)
+ GET / 200 in 69ms (next.js: 12ms, application-code: 58ms)
+ GET / 200 in 52ms (next.js: 5ms, application-code: 47ms)
+Failed to proxy http://127.0.0.1:8420/api/status Error: connect ECONNREFUSED 127.0.0.1:8420
+    at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8420) {
+  errno: -4078,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 8420
+}
+Error: connect ECONNREFUSED 127.0.0.1:8420
+    at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8420) {
+  errno: -4078,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 8420
+}
+ GET / 200 in 57ms (next.js: 12ms, application-code: 45ms)
+ GET / 200 in 54ms (next.js: 4ms, application-code: 51ms)
+ GET / 200 in 196ms (next.js: 49ms, application-code: 147ms)
+Failed to proxy http://127.0.0.1:8420/api/history Error: connect ECONNREFUSED 127.0.0.1:8420
+    at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8420) {
+  errno: -4078,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 8420
+}
+Error: connect ECONNREFUSED 127.0.0.1:8420
+    at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8420) {
+  errno: -4078,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 8420
+}
+✓ Compiled in 413ms
+ GET / 200 in 84ms (next.js: 19ms, application-code: 65ms)
+✓ Compiled in 292ms
+ GET / 200 in 75ms (next.js: 17ms, application-code: 58ms)
+✓ Compiled in 343ms
+ GET / 200 in 72ms (next.js: 15ms, application-code: 56ms)
+ GET / 200 in 105ms (next.js: 7ms, application-code: 98ms)
+✓ Compiled in 292ms
+ GET / 200 in 143ms (next.js: 53ms, application-code: 89ms)
+✓ Compiled in 841ms
+ GET / 200 in 67ms (next.js: 15ms, application-code: 52ms)
+✓ Compiled in 345ms
+ GET / 200 in 66ms (next.js: 15ms, application-code: 51ms)
+✓ Compiled in 1032ms
+ GET / 200 in 84ms (next.js: 22ms, application-code: 62ms)
+✓ Compiled in 1132ms
+ GET / 200 in 152ms (next.js: 21ms, application-code: 131ms)
+✓ Compiled in 412ms
+ GET / 200 in 72ms (next.js: 19ms, application-code: 52ms)
+✓ Compiled in 457ms
+ GET / 200 in 75ms (next.js: 26ms, application-code: 50ms)
+✓ Compiled in 659ms
+ GET / 200 in 80ms (next.js: 30ms, application-code: 50ms)
+✓ Compiled in 412ms
+ GET / 200 in 61ms (next.js: 14ms, application-code: 47ms)
+✓ Compiled in 346ms
+ GET / 200 in 103ms (next.js: 52ms, application-code: 51ms)
+✓ Compiled in 356ms
+ GET / 200 in 79ms (next.js: 20ms, application-code: 58ms)
+✓ Compiled in 350ms
+ GET / 200 in 67ms (next.js: 23ms, application-code: 43ms)
+✓ Compiled in 334ms
+ GET / 200 in 94ms (next.js: 26ms, application-code: 68ms)
+✓ Compiled in 320ms
+ GET / 200 in 82ms (next.js: 20ms, application-code: 62ms)
+✓ Compiled in 2s
+ GET / 200 in 121ms (next.js: 55ms, application-code: 66ms)
+✓ Compiled in 401ms
+ GET / 200 in 225ms (next.js: 90ms, application-code: 135ms)
+✓ Compiled in 384ms
+ GET / 200 in 94ms (next.js: 37ms, application-code: 57ms)
+✓ Compiled in 369ms
+ GET / 200 in 65ms (next.js: 29ms, application-code: 35ms)
+✓ Compiled in 1179ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET / 200 in 595ms (next.js: 31ms, application-code: 565ms)
+✓ Compiled in 1175ms
+ GET / 200 in 93ms (next.js: 39ms, application-code: 54ms)
+ GET / 200 in 42ms (next.js: 12ms, application-code: 30ms)
+✓ Compiled in 362ms
+[Server HMR] Update failed, full reload needed: SyntaxError: Identifier 'reduceMotion' has already been declared
+    at eval (<anonymous>)
+✓ Compiled in 670ms
+✓ Compiled in 345ms
+ GET / 200 in 217ms (next.js: 174ms, application-code: 43ms)
+[Server HMR] Update failed, full reload needed: SyntaxError: Identifier 'shimmerX' has already been declared
+    at eval (<anonymous>)
+✓ Compiled in 332ms
+✓ Compiled in 334ms
+ GET / 200 in 131ms (next.js: 94ms, application-code: 37ms)
+ GET / 200 in 42ms (next.js: 15ms, application-code: 27ms)
+✓ Compiled in 325ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ ReferenceError: useMotionTemplate is not defined
+    at Panel (src\components\agent-dashboard.tsx:243:19)
+  241 |     const shinePctX = useTransform(shimmerX, (v) => `${v * 100}%`);
+  242 |     const shinePctY = useTransform(shimmerY, (v) => `${v * 100}%`);
+> 243 |     const shine = useMotionTemplate`radial-gradient(ellipse at ${shinePctX} ${shinePctY}, rgb(255 255 255 / 0.06) 0%, transparent 55%)`;
+      |                   ^
+  244 |
+  245 |     return (
+  246 |       <motion.section {
+  digest: '1760460989'
+}
+✓ Compiled in 321ms
+ GET / 500 in 378ms (next.js: 17ms, application-code: 362ms)
+⨯ ReferenceError: useMotionTemplate is not defined
+    at Panel (src\components\agent-dashboard.tsx:243:19)
+  241 |     const shinePctX = useTransform(shimmerX, (v) => `${v * 100}%`);
+  242 |     const shinePctY = useTransform(shimmerY, (v) => `${v * 100}%`);
+> 243 |     const shine = useMotionTemplate`radial-gradient(ellipse at ${shinePctX} ${shinePctY}, rgb(255 255 255 / 0.06) 0%, transparent 55%)`;
+      |                   ^
+  244 |
+  245 |     return (
+  246 |       <motion.section {
+  digest: '1760460989'
+}
+ GET / 500 in 115ms (next.js: 20ms, application-code: 95ms)
+⨯ ReferenceError: useMotionTemplate is not defined
+    at Panel (src\components\agent-dashboard.tsx:243:19)
+  241 |     const shinePctX = useTransform(shimmerX, (v) => `${v * 100}%`);
+  242 |     const shinePctY = useTransform(shimmerY, (v) => `${v * 100}%`);
+> 243 |     const shine = useMotionTemplate`radial-gradient(ellipse at ${shinePctX} ${shinePctY}, rgb(255 255 255 / 0.06) 0%, transparent 55%)`;
+      |                   ^
+  244 |
+  245 |     return (
+  246 |       <motion.section {
+  digest: '1760460989'
+}
+ GET / 500 in 95ms (next.js: 15ms, application-code: 80ms)
+⨯ ReferenceError: useMotionTemplate is not defined
+    at Panel (src\components\agent-dashboard.tsx:243:19)
+  241 |     const shinePctX = useTransform(shimmerX, (v) => `${v * 100}%`);
+  242 |     const shinePctY = useTransform(shimmerY, (v) => `${v * 100}%`);
+> 243 |     const shine = useMotionTemplate`radial-gradient(ellipse at ${shinePctX} ${shinePctY}, rgb(255 255 255 / 0.06) 0%, transparent 55%)`;
+      |                   ^
+  244 |
+  245 |     return (
+  246 |       <motion.section {
+  digest: '1760460989'
+}
+ GET / 500 in 111ms (next.js: 20ms, application-code: 91ms)
+ GET / 200 in 128ms (next.js: 22ms, application-code: 106ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 438ms
+ GET / 200 in 74ms (next.js: 14ms, application-code: 59ms)
+✓ Compiled in 360ms
+ GET / 200 in 67ms (next.js: 14ms, application-code: 53ms)
+✓ Compiled in 370ms
+ GET / 200 in 71ms (next.js: 19ms, application-code: 52ms)
+✓ Compiled in 354ms
+ GET / 200 in 74ms (next.js: 32ms, application-code: 42ms)
+✓ Compiled in 616ms
+ GET / 200 in 89ms (next.js: 32ms, application-code: 57ms)
+✓ Compiled in 325ms
+ GET / 200 in 39ms (next.js: 15ms, application-code: 25ms)
+✓ Compiled in 348ms
+ GET / 200 in 158ms (next.js: 82ms, application-code: 76ms)
+✓ Compiled in 432ms
+ GET / 200 in 76ms (next.js: 22ms, application-code: 54ms)
+✓ Compiled in 353ms
+ GET / 200 in 67ms (next.js: 13ms, application-code: 55ms)
+✓ Compiled in 336ms
+ GET / 200 in 67ms (next.js: 17ms, application-code: 49ms)
+✓ Compiled in 450ms
+ GET / 200 in 45ms (next.js: 16ms, application-code: 29ms)
+[browser] ./src/components/agent-dashboard.tsx:1055:16
+Error: Expected '</', got 'jsx text'
+  1053 |           </div>
+  1054 |         )}
+> 1055 |       </header>
+       |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 1056 |
+       | ^
+> 1057 |       <div className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6">
+       | ^^^^^^
+  1058 |         {/* ============ alerte ============ */}
+  1059 |         <div className="mt-5 space-y-2">
+  1060 |           {status?.last_error && (
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/agent-dashboard.tsx
+    ./src/app/page.tsx 
+[browser] ./src/components/agent-dashboard.tsx:1055:16
+Error: Expected '</', got 'jsx text'
+  1053 |           </div>
+  1054 |         )}
+> 1055 |       </header>
+       |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 1056 |
+       | ^
+> 1057 |       <div className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6">
+       | ^^^^^^
+  1058 |         {/* ============ alerte ============ */}
+  1059 |         <div className="mt-5 space-y-2">
+  1060 |           {status?.last_error && (
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/agent-dashboard.tsx
+    ./src/app/page.tsx 
+[browser] ./src/components/agent-dashboard.tsx:1055:16
+Error: Expected '</', got 'jsx text'
+  1053 |           </div>
+  1054 |         )}
+> 1055 |       </header>
+       |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 1056 |
+       | ^
+> 1057 |       <div className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6">
+       | ^^^^^^
+  1058 |         {/* ============ alerte ============ */}
+  1059 |         <div className="mt-5 space-y-2">
+  1060 |           {status?.last_error && (
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/agent-dashboard.tsx
+    ./src/app/page.tsx 
+[browser] ./src/components/agent-dashboard.tsx:1055:16
+Error: Expected '</', got 'jsx text'
+  1053 |           </div>
+  1054 |         )}
+> 1055 |       </header>
+       |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 1056 |
+       | ^
+> 1057 |       <div className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6">
+       | ^^^^^^
+  1058 |         {/* ============ alerte ============ */}
+  1059 |         <div className="mt-5 space-y-2">
+  1060 |           {status?.last_error && (
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/agent-dashboard.tsx
+    ./src/app/page.tsx 
+[browser] ./src/components/agent-dashboard.tsx:1055:16
+Error: Expected '</', got 'jsx text'
+  1053 |           </div>
+  1054 |         )}
+> 1055 |       </header>
+       |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 1056 |
+       | ^
+> 1057 |       <div className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6">
+       | ^^^^^^
+  1058 |         {/* ============ alerte ============ */}
+  1059 |         <div className="mt-5 space-y-2">
+  1060 |           {status?.last_error && (
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/agent-dashboard.tsx
+    ./src/app/page.tsx 
+[browser] ./src/components/agent-dashboard.tsx:1055:16
+Error: Expected '</', got 'jsx text'
+  1053 |           </div>
+  1054 |         )}
+> 1055 |       </header>
+       |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 1056 |
+       | ^
+> 1057 |       <div className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6">
+       | ^^^^^^
+  1058 |         {/* ============ alerte ============ */}
+  1059 |         <div className="mt-5 space-y-2">
+  1060 |           {status?.last_error && (
+
+Parsing ecmascript source code failed
+
+Import trace:
+  Server Component:
+    ./src/components/agent-dashboard.tsx
+    ./src/app/page.tsx 
+ GET / 200 in 105ms (next.js: 9ms, application-code: 96ms)
+✓ Compiled in 456ms
+ GET / 200 in 320ms (next.js: 245ms, application-code: 75ms)
+ GET / 200 in 85ms (next.js: 14ms, application-code: 71ms)
+ GET / 200 in 52ms (next.js: 7ms, application-code: 45ms)
+ GET / 200 in 48ms (next.js: 4ms, application-code: 44ms)
+ GET / 200 in 50ms (next.js: 4ms, application-code: 46ms)
+ GET / 200 in 46ms (next.js: 4ms, application-code: 42ms)
+ GET / 200 in 44ms (next.js: 4ms, application-code: 41ms)
+ GET / 200 in 24ms (next.js: 5ms, application-code: 19ms)
+ GET / 200 in 195ms (next.js: 100ms, application-code: 95ms)
+ GET / 200 in 60ms (next.js: 8ms, application-code: 52ms)
+ GET / 200 in 124ms (next.js: 48ms, application-code: 76ms)
+ GET / 200 in 74ms (next.js: 6ms, application-code: 68ms)
+ GET / 200 in 89ms (next.js: 6ms, application-code: 82ms)
+ GET / 200 in 94ms (next.js: 6ms, application-code: 88ms)
+ GET / 200 in 91ms (next.js: 7ms, application-code: 84ms)
+ GET / 200 in 111ms (next.js: 7ms, application-code: 104ms)
+ GET / 200 in 98ms (next.js: 14ms, application-code: 84ms)
+ GET / 200 in 50ms (next.js: 7ms, application-code: 43ms)
+ GET / 200 in 41ms (next.js: 19ms, application-code: 23ms)
+ GET / 200 in 46ms (next.js: 14ms, application-code: 32ms)
+✓ Compiled in 180ms
+✓ Compiled in 156ms
+ GET / 200 in 44ms (next.js: 13ms, application-code: 31ms)
+ GET / 200 in 38ms (next.js: 14ms, application-code: 23ms)
+✓ Compiled in 139ms
+✓ Compiled in 153ms
+ GET / 200 in 38ms (next.js: 15ms, application-code: 23ms)
+ GET / 200 in 254ms (next.js: 4ms, application-code: 250ms)
+ GET / 200 in 59ms (next.js: 3ms, application-code: 56ms)
+ GET /dashboard 200 in 1586ms (next.js: 1435ms, application-code: 151ms)
+ GET / 200 in 64ms (next.js: 9ms, application-code: 55ms)
+ GET / 200 in 57ms (next.js: 5ms, application-code: 52ms)
+✓ Compiled in 181ms
+ GET / 200 in 67ms (next.js: 18ms, application-code: 49ms)
+ GET / 200 in 69ms (next.js: 4ms, application-code: 65ms)
+ GET /dashboard 200 in 67ms (next.js: 9ms, application-code: 58ms)
+ GET / 200 in 162ms (next.js: 37ms, application-code: 125ms)
+⚠ Blocked cross-origin request to Next.js dev resource /_next/static/chunks/node_modules_next_dist_20wefz_._.js from "127.0.0.1".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['127.0.0.1'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /_next/static/chunks/node_modules_1alcagt._.js from "127.0.0.1".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['127.0.0.1'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /_next/static/chunks/src_components_landing-hero_tsx_03-3o2t._.js from "127.0.0.1".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['127.0.0.1'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /_next/hmr from "127.0.0.1".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['127.0.0.1'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET /dashboard 200 in 84ms (next.js: 12ms, application-code: 72ms)
+⚠ Blocked cross-origin request to Next.js dev resource /_next/static/chunks/src_0s3tknq._.js from "127.0.0.1".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['127.0.0.1'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /_next/static/chunks/node_modules_16xuga6._.js from "127.0.0.1".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['127.0.0.1'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins

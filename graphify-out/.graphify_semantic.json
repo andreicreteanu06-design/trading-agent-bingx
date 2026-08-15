@@ -1,0 +1,1245 @@
+{
+  "nodes": [
+    {
+      "id": "readme_bingx_signal_agent",
+      "label": "BingX Futures Signal Agent (project overview)",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 1-10",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_manual_execution_only",
+      "label": "Manual Execution Only (agent never sends orders)",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 7-9",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_multi_timeframe_trend_following",
+      "label": "Multi-Timeframe Trend Following (4h direction, 1h entry)",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 15-17",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_market_placed_stop",
+      "label": "Market-Placed Stop (wider of swing structure vs 1.8xATR)",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 19-21",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_leverage_as_consequence",
+      "label": "Leverage as a Consequence (derived from risk and stop distance)",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 23-34",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_claude_can_only_brake",
+      "label": "Claude Can Only Brake (veto-only LLM role)",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 36-39",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_risk_engine",
+      "label": "Risk Engine (sizing, caps, liquidation - zero LLM)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 93, lines 164-180",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_risk_parameters",
+      "label": "Hard Risk Limits in config.py",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 164-180",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_kill_switch",
+      "label": "Kill-Switch (persisted daily/total drawdown limits)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 105-119",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_news_blackout",
+      "label": "News Blackout (blocks entries, does not generate signals)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 121-131",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_volatility_guard",
+      "label": "VolatilityGuard (unscheduled shock detector)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 129-131",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_trade_manager",
+      "label": "Trade Manager (breakeven after TP1, ATR trailing, time exit)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 95",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_signal_builder",
+      "label": "Signal Builder (multi-timeframe logic, 0-100 score)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 92",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_bingx_client",
+      "label": "BingX Client (CCXT, only file that knows about BingX)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 90",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_claude_analyzer",
+      "label": "Claude Analyzer (critical review, reject-only)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 98",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_backtest_engine",
+      "label": "Backtest Engine (no-lookahead simulation)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 97",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_negative_edge_finding",
+      "label": "Backtest Verdict: Current Strategy Loses Money (-0.386R)",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 184-222",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_ema50_pullback_crowding_hypothesis",
+      "label": "EMA50 Pullback Crowding Hypothesis (stop cluster explanation)",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 207-209",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_tradingview_webhook",
+      "label": "TradingView Pine Script Webhook Receiver",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 133-160",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_ccxt_symbol_format",
+      "label": "CCXT Perpetual Symbol Format (BTC/USDT:USDT)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 82",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_diagnose_tool",
+      "label": "diagnose.py (explains why no signal exists now)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 76-79, line 234",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_dependencies",
+      "label": "Python Runtime Dependencies",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "lines 1-6",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_ccxt",
+      "label": "ccxt >= 4.4.0",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "line 1",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_anthropic",
+      "label": "anthropic >= 0.40.0",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "line 5",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements_pandas_numpy",
+      "label": "pandas + numpy (indicator math stack)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "lines 2-3",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_dashboard",
+      "label": "Agent BingX Dashboard (single-file vanilla HTML/JS UI)",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 1-395",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_api",
+      "label": "api() fetch wrapper",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 161-165",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_backend_api_contract",
+      "label": "Backend REST Contract (/api/status, /api/scan, /api/history, /api/backtest, /api/auto)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 286, 315, 339, 365, 374, 380",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_tick",
+      "label": "tick() polling loop (3s status refresh)",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 363-369, 392",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_renderstatus",
+      "label": "renderStatus() status panel renderer",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 170-237",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_signalcard",
+      "label": "signalCard() signal renderer",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 240-283",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_loadscan",
+      "label": "loadScan() last-scan renderer",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 285-311",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_loadhistory",
+      "label": "loadHistory() signal history table",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 314-335",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_loadbacktest",
+      "label": "loadBacktest() backtest report table",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 338-360",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_esc",
+      "label": "esc() HTML entity escaping helper",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 152-153",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_price",
+      "label": "price() adaptive-precision price formatter",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 147-151",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_fmt",
+      "label": "fmt() ro-RO locale number formatter",
+      "file_type": "code",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 145-146",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_scan_status_taxonomy",
+      "label": "Scan Result Status Taxonomy (approved/claude_skip/rejected/no_setup/skipped/error)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 243-250, 308",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_dark_terminal_design_system",
+      "label": "Dark Terminal Design System (CSS variables, mono tabular numerals)",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 9-85",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_index_manual_execution_disclaimer",
+      "label": "Footer Manual-Execution Disclaimer",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 138-141",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_agents_nextjs_agent_rules",
+      "label": "Next.js Agent Rules block (auto-generated guidance)",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\AGENTS.md",
+      "source_location": "lines 1-9",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_claude_agents_include",
+      "label": "web/CLAUDE.md include of AGENTS.md",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\CLAUDE.md",
+      "source_location": "line 1",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_readme_nextjs_app",
+      "label": "Next.js Web App (create-next-app scaffold)",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\README.md",
+      "source_location": "lines 1-37",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_readme_vercel_deployment",
+      "label": "Vercel Deployment Path",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\README.md",
+      "source_location": "lines 32-36",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_public_file_svg",
+      "label": "file.svg - document/page glyph icon",
+      "file_type": "image",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\file.svg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_public_globe_svg",
+      "label": "globe.svg - globe/world glyph icon",
+      "file_type": "image",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\globe.svg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_public_next_svg",
+      "label": "next.svg - Next.js wordmark logo",
+      "file_type": "image",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\next.svg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_public_vercel_svg",
+      "label": "vercel.svg - Vercel triangle logo",
+      "file_type": "image",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\vercel.svg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_public_window_svg",
+      "label": "window.svg - browser window glyph icon",
+      "file_type": "image",
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\window.svg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "readme_bingx_signal_agent",
+      "target": "readme_manual_execution_only",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 7-9",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_manual_execution_only",
+      "target": "readme_bingx_client",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 8-9",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_signal_builder",
+      "target": "readme_multi_timeframe_trend_following",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 92, lines 15-17",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_risk_engine",
+      "target": "readme_leverage_as_consequence",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 23-34, line 93",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_risk_engine",
+      "target": "readme_risk_parameters",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 164-180",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_market_placed_stop",
+      "target": "readme_risk_parameters",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 19-21, line 175",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_claude_analyzer",
+      "target": "readme_claude_can_only_brake",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 36-39, line 98",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_claude_analyzer",
+      "target": "readme_risk_engine",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 36-37",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_tradingview_webhook",
+      "target": "readme_risk_engine",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 159-160",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_tradingview_webhook",
+      "target": "readme_ccxt_symbol_format",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 148-157",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_news_blackout",
+      "target": "readme_volatility_guard",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 128-131",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_backtest_engine",
+      "target": "readme_negative_edge_finding",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 184-199",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_ema50_pullback_crowding_hypothesis",
+      "target": "readme_negative_edge_finding",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 207-209",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_negative_edge_finding",
+      "target": "readme_multi_timeframe_trend_following",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 207-218",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_negative_edge_finding",
+      "target": "readme_risk_engine",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 213-215",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_diagnose_tool",
+      "target": "readme_signal_builder",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 234",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_trade_manager",
+      "target": "readme_risk_engine",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 93-95",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_bingx_client",
+      "target": "readme_ccxt_symbol_format",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 82, 90",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_kill_switch",
+      "target": "readme_news_blackout",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "lines 105-131",
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_ccxt",
+      "target": "readme_bingx_client",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "line 1",
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_anthropic",
+      "target": "readme_claude_analyzer",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "line 5",
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_pandas_numpy",
+      "target": "readme_signal_builder",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "lines 2-3",
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_dependencies",
+      "target": "requirements_ccxt",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "line 1",
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_dependencies",
+      "target": "requirements_anthropic",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "line 5",
+      "weight": 1.0
+    },
+    {
+      "source": "requirements_dependencies",
+      "target": "requirements_pandas_numpy",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\requirements.txt",
+      "source_location": "lines 2-3",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_tick",
+      "target": "app_index_api",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 365",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_tick",
+      "target": "app_index_renderstatus",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 365",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_renderstatus",
+      "target": "app_index_loadscan",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 235",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_renderstatus",
+      "target": "app_index_loadhistory",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 235",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_renderstatus",
+      "target": "app_index_esc",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 208-228",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_renderstatus",
+      "target": "app_index_fmt",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 179",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_loadscan",
+      "target": "app_index_api",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 286",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_loadscan",
+      "target": "app_index_signalcard",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 310",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_signalcard",
+      "target": "app_index_price",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 259-276",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_signalcard",
+      "target": "app_index_fmt",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 267-280",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_signalcard",
+      "target": "app_index_esc",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 252-281",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_price",
+      "target": "app_index_fmt",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 150",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_loadhistory",
+      "target": "app_index_api",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 315",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_loadhistory",
+      "target": "app_index_price",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 330-331",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_loadbacktest",
+      "target": "app_index_api",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "line 339",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_loadbacktest",
+      "target": "app_index_fmt",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 352-355",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_api",
+      "target": "app_index_backend_api_contract",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 161-165",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_dashboard",
+      "target": "app_index_dark_terminal_design_system",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 9-85",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_signalcard",
+      "target": "app_index_scan_status_taxonomy",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 243-250",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_loadscan",
+      "target": "app_index_scan_status_taxonomy",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 308-309",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_renderstatus",
+      "target": "readme_kill_switch",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 183-190",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_renderstatus",
+      "target": "readme_news_blackout",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 192-198",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_renderstatus",
+      "target": "readme_risk_parameters",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 201-203",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_signalcard",
+      "target": "readme_risk_engine",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 269-277",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_signalcard",
+      "target": "readme_claude_analyzer",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 280-281",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_loadbacktest",
+      "target": "readme_negative_edge_finding",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 348-359",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_manual_execution_disclaimer",
+      "target": "readme_manual_execution_only",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 138-141",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_esc",
+      "target": "app_index_dashboard",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 152-153",
+      "weight": 1.0
+    },
+    {
+      "source": "web_claude_agents_include",
+      "target": "web_agents_nextjs_agent_rules",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\CLAUDE.md",
+      "source_location": "line 1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_agents_nextjs_agent_rules",
+      "target": "web_readme_nextjs_app",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\AGENTS.md",
+      "source_location": "lines 3-7",
+      "weight": 1.0
+    },
+    {
+      "source": "web_readme_nextjs_app",
+      "target": "web_readme_vercel_deployment",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\README.md",
+      "source_location": "lines 32-36",
+      "weight": 1.0
+    },
+    {
+      "source": "web_public_next_svg",
+      "target": "web_readme_nextjs_app",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\next.svg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "web_public_vercel_svg",
+      "target": "web_readme_vercel_deployment",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\vercel.svg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "web_public_file_svg",
+      "target": "web_readme_nextjs_app",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\file.svg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "web_public_globe_svg",
+      "target": "web_readme_nextjs_app",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\globe.svg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "web_public_window_svg",
+      "target": "web_readme_nextjs_app",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\public\\window.svg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "web_readme_nextjs_app",
+      "target": "app_index_dashboard",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\README.md",
+      "source_location": "lines 1-19",
+      "weight": 1.0
+    },
+    {
+      "source": "app_index_scan_status_taxonomy",
+      "target": "readme_claude_can_only_brake",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html",
+      "source_location": "lines 244-249",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_diagnose_tool",
+      "target": "app_index_scan_status_taxonomy",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md",
+      "source_location": "line 76, line 234",
+      "weight": 1.0
+    },
+    {
+      "source": "web_readme_nextjs_app",
+      "target": "readme_bingx_signal_agent",
+      "relation": "conceptually_related_to",
+      "confidence": "AMBIGUOUS",
+      "confidence_score": 0.25,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\web\\README.md",
+      "source_location": "lines 1-2",
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "pre_trade_risk_gating",
+      "label": "Pre-trade risk gating chain (every signal must pass all gates)",
+      "nodes": [
+        "readme_risk_engine",
+        "readme_kill_switch",
+        "readme_news_blackout",
+        "readme_volatility_guard",
+        "readme_claude_can_only_brake",
+        "readme_tradingview_webhook"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md"
+    },
+    {
+      "id": "dashboard_data_refresh_flow",
+      "label": "Dashboard data refresh flow (poll status, then reload panels)",
+      "nodes": [
+        "app_index_tick",
+        "app_index_api",
+        "app_index_renderstatus",
+        "app_index_loadscan",
+        "app_index_loadhistory",
+        "app_index_loadbacktest"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\app\\index.html"
+    },
+    {
+      "id": "negative_edge_evidence_chain",
+      "label": "Negative-edge evidence chain (backtest result, cause hypothesis, surfaced warning)",
+      "nodes": [
+        "readme_backtest_engine",
+        "readme_negative_edge_finding",
+        "readme_ema50_pullback_crowding_hypothesis",
+        "app_index_loadbacktest"
+      ],
+      "relation": "form",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Dell\\trading-agent-bingx\\README.md"
+    }
+  ],
+  "input_tokens": 65610,
+  "output_tokens": 0
+}
