@@ -37,11 +37,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
+from datetime import datetime, timezone
 
 import config as cfg
 from backtest.engine import Backtester, BacktestReport
 from exchange.bingx_client import BingXClient
-from strategy import indicators, oscillators, scalp_signal
+from strategy import indicators, oscillators, scalp_signal, validation_gate
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S"
@@ -286,7 +287,31 @@ def main() -> int:
 
     print("  " + "-" * 74)
 
-    if all([ok_periods, ok_symbols, ok_sample, ok_signif, ok_positive]):
+    # --- certificatul citit de strategy/validation_gate.py in live
+    passed = all([ok_periods, ok_symbols, ok_sample, ok_signif, ok_positive])
+    periods = sorted(l for _, l, _ in all_rows)
+    cert = validation_gate.Certificate(
+        passed=passed,
+        fingerprint=validation_gate.fingerprint(scfg),
+        created_at=datetime.now(timezone.utc).isoformat(),
+        expectancy_r=round(overall, 4),
+        t_stat=round(t_stat, 3),
+        total_trades=total_trades,
+        windows_passing=len(passing),
+        symbols_passing=len(symbols_ok),
+        period_start=periods[0].split(" -> ")[0] if periods else "",
+        period_end=periods[-1].split(" -> ")[-1] if periods else "",
+        notes=[
+            f"{len(all_rows)} ferestre pe {len(symbols)} simboluri",
+            f"prag {args.threshold:+.2f}R, minim {args.min_trades} trades/fereastra",
+        ],
+    )
+    validation_gate.save_certificate(cert)
+    print(f"\n  Certificat scris in {validation_gate.DEFAULT_PATH}")
+    print("  Agentul il citeste la fiecare scanare; fara el, semnalele sunt")
+    print("  marcate ca NEtranzactionabile.")
+
+    if passed:
         print("  TRECUT. Strategia are edge consistent pe date nevazute la calibrare.")
         print("  Pasul urmator este paper trading, nu bani reali. Backtestul nu")
         print("  modeleaza cozile de ordine, opririle de exchange si nici mana ta.")

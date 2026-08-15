@@ -560,19 +560,34 @@ def _confluence_continuation(df: pd.DataFrame, side: Side, cfg) -> tuple[float, 
 
 
 # ------------------------------------------------------------------ economie
-def roundtrip_cost_pct(app_cfg, scfg) -> float:
+def roundtrip_cost_pct(app_cfg, scfg, win_rate: float = 0.35) -> float:
     """
-    Costul dus-intors, ca fractiune din pret.
+    Costul dus-intors asteptat, ca fractiune din pret.
 
-    Intrare limit post-only: platim maker si NU platim slippage - noi suntem
-    lichiditatea. Iesire pe stop sau TP: in cel mai rau caz taker plus slippage,
-    si asa o modelam. Optimismul aici se plateste mai tarziu, in bani reali.
+    Intrarea e limit post-only: maker, fara slippage - noi suntem lichiditatea.
+
+    Iesirea depinde de CUM se termina trade-ul, si diferenta e mare:
+      - pe TP: tot ordin limit care asteapta in carte -> maker, fara slippage
+      - pe stop: ordin de piata declansat in graba  -> taker + slippage
+
+    Nu stim dinainte care va fi, deci ponderam cu rata de succes asteptata.
+    `win_rate` implicit 0.35 este conservator pentru un setup de reversie; daca
+    stii mai bine din backtest, transmite-l explicit.
+
+    De ce conteaza: modelul anterior presupunea taker pe orice iesire si supraestima
+    costul cu ~40%. Un cost supraestimat respinge setup-uri viabile - exact
+    greseala inversa fata de cea obisnuita, dar tot greseala.
     """
     if getattr(scfg, "entry_order_type", "market") == "limit_post_only":
         entry_cost = app_cfg.maker_fee
     else:
         entry_cost = app_cfg.taker_fee + app_cfg.slippage
-    return entry_cost + app_cfg.taker_fee + app_cfg.slippage
+
+    exit_on_tp = app_cfg.maker_fee
+    exit_on_stop = app_cfg.taker_fee + app_cfg.slippage
+    expected_exit = win_rate * exit_on_tp + (1.0 - win_rate) * exit_on_stop
+
+    return entry_cost + expected_exit
 
 
 def _time_feasibility(r_distance: float, atr_val: float, bars: int) -> float:

@@ -418,8 +418,23 @@ class Backtester:
         din aceeasi pozitie. Daca am raporta-o separat, am umfla artificial
         numarul de trades si am distorsiona win rate-ul.
         """
-        fee = self.cfg.taker_fee
-        slip = self.cfg.slippage
+        # Cine plateste ce, la iesire:
+        #
+        #   TP  -> ordin LIMIT care asteapta in carte. Noi suntem lichiditatea,
+        #          deci maker si ZERO slippage: pretul e cel pe care l-am cerut,
+        #          altfel ordinul pur si simplu nu se executa.
+        #   stop-> ordin de piata declansat, luam din carte in graba. Taker si
+        #          slippage, iar in miscari violente chiar mai mult.
+        #
+        # Distinctia nu e cosmetica: pentru un scalp cu R mic in pret, ea
+        # valoreaza ~0.2R per tranzactie. Pana acum modelul presupunea taker pe
+        # ambele iesiri, adica platea de doua ori un cost pe care il plateste
+        # o singura data.
+        reason = str(exit_info.get("reason", ""))
+        exit_is_maker = reason.startswith("tp")
+
+        fee = self.cfg.maker_fee if exit_is_maker else self.cfg.taker_fee
+        slip = 0.0 if exit_is_maker else self.cfg.slippage
 
         fraction = exit_info["fraction_closed"]
         size_closed = trade["position_size"] * fraction

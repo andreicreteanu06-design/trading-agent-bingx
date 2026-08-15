@@ -26,7 +26,7 @@ from news import sentiment
 from news.sentiment import SentimentConfig
 from risk.gate import CircuitGate, RegimeGate
 from risk.trade_recorder import TradeRecorder
-from strategy import indicators, risk_engine, signal_builder
+from strategy import indicators, risk_engine, signal_builder, validation_gate
 from strategy.kill_switch import KillSwitch, KillSwitchConfig
 
 log = logging.getLogger(__name__)
@@ -72,6 +72,10 @@ class ScanResult:
     sentiment_blocked_sides: list[str] = field(default_factory=list)
     sentiment_reasons: list[str] = field(default_factory=list)
     sentiment_data: dict = field(default_factory=dict)
+    # Poarta de validare (strategy/validation_gate.py). Cand e False, semnalele
+    # sunt informative, NU tranzactionabile.
+    tradeable: bool = False
+    tradeable_reason: str = ""
     circuit_reason: str = ""
     circuit_metrics: dict = field(default_factory=dict)
     # Pozitii detectate ca inchise in acest ciclu si scrise in jurnal.
@@ -107,6 +111,8 @@ class ScanResult:
             "sentiment_blocked_sides": self.sentiment_blocked_sides,
             "sentiment_reasons": self.sentiment_reasons,
             "sentiment_data": self.sentiment_data,
+            "tradeable": self.tradeable,
+            "tradeable_reason": self.tradeable_reason,
             "circuit_reason": self.circuit_reason,
             "circuit_metrics": self.circuit_metrics,
             "closed_trades": self.closed_trades,
@@ -252,6 +258,15 @@ class Scanner:
         if not out.circuit_ok:
             out.finished_at = datetime.now(timezone.utc).isoformat()
             return out
+
+        # --- poarta de validare: are strategia dreptul sa produca semnale
+        # pe care sa pui bani? Nu opreste scanarea - semnalele raman utile ca
+        # informatie - dar le marcheaza explicit.
+        gate = validation_gate.check(C.scalp)
+        out.tradeable = gate.tradeable
+        out.tradeable_reason = gate.reason
+        if not gate.tradeable:
+            log.warning("Semnale NEtranzactionabile: %s", gate.reason)
 
         # --- sentiment: ce DIRECTII sunt permise acum?
         #
