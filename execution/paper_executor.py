@@ -1,9 +1,11 @@
 """
 Executor de hartie pentru strategia cross-sectionala. Fara ordine reale.
 
-    python execution\\paper_executor.py --capital 500      # prima rulare
-    python execution\\paper_executor.py                    # rulari urmatoare
-    python execution\\paper_executor.py --reset             # sterge starea
+    python execution\\paper_executor.py --capital 500       # prima rulare
+    python execution\\paper_executor.py                     # o rulare in plus
+    python execution\\paper_executor.py --status             # doar starea curenta, fara retea
+    python execution\\paper_executor.py --loop               # ruleaza continuu
+    python execution\\paper_executor.py --reset              # sterge starea
 
 Ruleaza-l periodic (manual sau printr-un task programat), la acelasi interval
 la care rebalanseaza strategia (`hold` din certificatul validat, de obicei
@@ -38,6 +40,7 @@ import json
 import logging
 import os
 import sys
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
@@ -131,25 +134,34 @@ def funding_accrued_since(
     return out
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description="Executor de hartie - fara ordine reale")
-    p.add_argument("--capital", type=float, default=None,
-                   help="capital initial USDT (necesar doar la prima rulare)")
-    p.add_argument("--tf", default="4h")
-    p.add_argument("--universe", type=int, default=50)
-    p.add_argument("--factor", default="range_pos")
-    p.add_argument("--reset", action="store_true",
-                   help="sterge starea si ledger-ul, reincepe de la zero")
-    args = p.parse_args()
+def print_status(state: PaperState) -> None:
+    """Starea curenta, direct din disc - fara niciun apel de retea."""
+    print()
+    print("=" * 78)
+    print("  STARE HARTIE (din logs/paper_state.json, fara date live)")
+    print("=" * 78)
+    print(f"  pornit         : {state.started_at[:16]}")
+    print(f"  ultima rulare  : {(state.last_updated_at or '-')[:16]}")
+    print(f"  capital initial: {state.capital_usdt:.2f} USDT")
+    print(f"  echitate acum  : {state.equity_usdt:.2f} USDT  "
+          f"({state.equity_usdt / state.capital_usdt - 1:+.2%})")
+    print(f"  P&L de pret cumulat    : {state.price_pnl_usdt:+.2f} USDT")
+    print(f"  funding platit cumulat : {state.funding_paid_usdt:+.2f} USDT")
+    print(f"  comisioane cumulate    : {state.fees_paid_usdt:.2f} USDT")
+    print(f"  tranzactii de hartie   : {state.trade_count}")
+    print()
+    if not state.positions:
+        print("  Nicio pozitie deschisa.")
+    else:
+        print(f"  {len(state.positions)} pozitii (marcate la ultima rulare, nu live):")
+        for sym, pos in sorted(state.positions.items(), key=lambda kv: -abs(kv[1].qty * kv[1].mark_price)):
+            side = "long " if pos.qty > 0 else "short"
+            notional = abs(pos.qty * pos.mark_price)
+            print(f"    {side} {sym:<22} {notional:>10.2f} USDT  @ {pos.mark_price:.6g}")
+    print("=" * 78)
 
-    logging.basicConfig(level=logging.WARNING, format="%(message)s")
 
-    if args.reset:
-        for path in (STATE_PATH, LEDGER_PATH):
-            if os.path.exists(path):
-                os.remove(path)
-        print("Stare de hartie stearsa.")
-
+def run_once(args: argparse.Namespace) -> int:
     now = datetime.now(timezone.utc)
     state = load_state()
 
@@ -386,6 +398,61 @@ def main() -> int:
         "trades": trades,
     })
 
+    return 0
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="Executor de hartie - fara ordine reale")
+    p.add_argument("--capital", type=float, default=None,
+                   help="capital initial USDT (necesar doar la prima rulare)")
+    p.add_argument("--tf", default="4h")
+    p.add_argument("--universe", type=int, default=50)
+    p.add_argument("--factor", default="range_pos")
+    p.add_argument("--reset", action="store_true",
+                   help="sterge starea si ledger-ul, reincepe de la zero")
+    p.add_argument("--status", action="store_true",
+                   help="arata starea curenta din disc, fara nicio cerere de retea")
+    p.add_argument("--loop", action="store_true",
+                   help="ruleaza continuu, la fiecare --interval secunde")
+    p.add_argument("--interval", type=int, default=4 * 3600,
+                   help="secunde intre rulari in modul --loop (implicit 4h, cat tf-ul strategiei)")
+    args = p.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s",
+                        datefmt="%H:%M:%S")
+
+    if args.reset:
+        for path in (STATE_PATH, LEDGER_PATH):
+            if os.path.exists(path):
+                os.remove(path)
+        print("Stare de hartie stearsa.")
+
+    if args.status:
+        state = load_state()
+        if state is None:
+            print("Nu exista inca stare de hartie. Porneste cu --capital <suma>.")
+            return 1
+        print_status(state)
+        return 0
+
+    if not args.loop:
+        return run_once(args)
+
+    log.info("Executor de hartie in bucla, la fiecare %d secunde. Ctrl+C pentru oprire.",
+             args.interval)
+    try:
+        while True:
+            start = time.time()
+            try:
+                run_once(args)
+            except Exception as exc:  # noqa: BLE001
+                # O rulare picata (retea, date lipsa) nu are voie sa opreasca
+                # o bucla care trebuie sa mearga zile in sir.
+                log.error("rulare esuata, continui: %s", str(exc)[:160])
+            sleep_for = max(30, args.interval - (time.time() - start))
+            time.sleep(sleep_for)
+    except KeyboardInterrupt:
+        log.info("Oprit. Starea ramane in %s", STATE_PATH)
     return 0
 
 

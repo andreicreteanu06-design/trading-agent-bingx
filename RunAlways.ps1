@@ -52,6 +52,7 @@ $PythonLog = Join-Path $LogDir "python-api.log"
 $NextLog   = Join-Path $LogDir "nextjs.log"
 $OiLoggerLog = Join-Path $LogDir "oi-logger.log"
 $LiqLoggerLog = Join-Path $LogDir "liq-logger.log"
+$PaperExecLog = Join-Path $LogDir "paper-executor.log"
 $LauncherLog = Join-Path $LogDir "launcher.log"
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -128,6 +129,7 @@ $pythonProc = $null
 $nextProc   = $null
 $oiLoggerProc = $null
 $liqLoggerProc = $null
+$paperExecProc = $null
 $running = $true
 
 # ---- Clean shutdown ----
@@ -140,7 +142,7 @@ $running = $true
 # without needing to hook console events at all.
 function Stop-Children {
     Write-Log "Stopping child processes..."
-    foreach ($p in @($pythonProc, $nextProc, $oiLoggerProc, $liqLoggerProc)) {
+    foreach ($p in @($pythonProc, $nextProc, $oiLoggerProc, $liqLoggerProc, $paperExecProc)) {
         if ($p -and -not $p.HasExited) {
             try { $p.Kill() } catch { }
         }
@@ -186,6 +188,17 @@ while ($running) {
         $liqLoggerProc = Start-ProcessWithLogging -Name "LiqLogger" `
             -Exe "python" -ArgLine "tools\liq_logger.py" `
             -WorkingDir $ScriptDir -LogFile $LiqLoggerLog
+    }
+
+    # --- Paper trading executor (no real orders — see execution/paper_executor.py) ---
+    # Assumes logs/paper_state.json already exists (bootstrapped manually with
+    # --capital once); --loop alone won't create it. If state is ever reset,
+    # someone has to run --capital by hand once before this picks it back up.
+    if (-not $paperExecProc -or $paperExecProc.HasExited) {
+        Write-Log "Starting paper executor..."
+        $paperExecProc = Start-ProcessWithLogging -Name "PaperExecutor" `
+            -Exe "python" -ArgLine "execution\paper_executor.py --loop" `
+            -WorkingDir $ScriptDir -LogFile $PaperExecLog
     }
 
     # Wait a bit before checking again
