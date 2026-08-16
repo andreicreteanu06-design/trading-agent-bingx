@@ -47,7 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 
-from backtest.validate_xs import build_weights, factor_signal
+from backtest.validate_xs import GRID, build_weights, factor_signal
 from exchange.bingx_client import BingXClient
 from strategy import xs_gate
 from tools.edge_scan import compute_features, fetch_panel, pick_universe
@@ -55,11 +55,6 @@ from tools.edge_scan import compute_features, fetch_panel, pick_universe
 log = logging.getLogger("xs_signals")
 
 BOOK_PATH = "logs/xs_book.json"
-
-# Aceeasi grila pe care a rulat validarea. Trebuie sa coincida, altfel amprenta
-# nu se potriveste si poarta respinge certificatul - ceea ce e comportamentul
-# corect, nu o bataie de cap.
-GRID = tuple((h, vs) for h in (24, 30, 42) for vs in (True, False))
 
 
 def load_book() -> dict:

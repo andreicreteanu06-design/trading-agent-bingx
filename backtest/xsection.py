@@ -116,7 +116,6 @@ def run(
     din lumanarea urmatoare.
     """
     rets = closes.pct_change()
-    symbols = list(closes.columns)
 
     longs: set[str] = set()
     shorts: set[str] = set()

@@ -88,6 +88,17 @@ MIN_FOLD_WIN_RATE = 0.6
 MIN_OOS_YEARS = 0.75
 MIN_SYMBOLS = 20
 
+# Grila de configuratii incercate la fiecare fold, si parte din amprenta
+# certificatului. Deliberat mica: fiecare parametru in plus e o sansa in plus
+# de a gasi noroc pe fereastra de antrenament si a-l confunda cu edge.
+#
+# Traieste aici, la nivel de modul, ca sa o importe si tools/xs_signals.py.
+# A fost copiata manual acolo la inceput, iar doua copii ale aceleiasi liste in
+# fisiere diferite inseamna ca prima modificare a uneia inchide poarta fara ca
+# nimeni sa inteleaga de ce - amprenta nu se mai potriveste, si mesajul spune
+# doar "configuratia s-a schimbat".
+GRID = tuple((h, vs) for h in (24, 30, 42) for vs in (True, False))
+
 
 # Semnul IC-ului masurat de tools/edge_scan.py, per factor. Un factor cu IC
 # negativ (valoare mare -> randament viitor mic) trebuie intors inainte de a fi
@@ -217,7 +228,15 @@ def simulate(
             gross = float((w * r).sum())
 
         cost = 0.0
-        if i % hold == 0:
+        # Rebalansarea se numara de la INCEPUTUL ferestrei, nu de la indexul
+        # absolut. Cu `i % hold` fiecare fereastra pornea cu cartea goala si
+        # ramanea fara expunere pana cand indexul absolut se nimerea divizibil -
+        # masurat, 4.1% din barele OOS, si crescand monoton de la 0.9% in primul
+        # fold la 7.2% in al optulea, pentru ca 333 % 42 muta startul cu -3 la
+        # fiecare fold. Foldurile tarzii erau sistematic handicapate, iar
+        # rezultatul depindea de o coincidenta intre marimea chunk-ului si
+        # perioada de detinere.
+        if (i - start) % hold == 0:
             new_w = build_weights(signal.iloc[i], vols.iloc[i], vol_scale)
             if not new_w.empty:
                 idx = w.index.union(new_w.index)
@@ -291,9 +310,7 @@ def main() -> int:
         if btc in rets else pd.Series(0.0, index=rets.index)
     )
 
-    # Grila deliberat mica. Fiecare parametru in plus e o sansa in plus de a
-    # gasi noroc pe fereastra de antrenament si a-l confunda cu edge.
-    grid = [(h, vs) for h in (24, 30, 42) for vs in (True, False)]
+    grid = GRID
 
     n = len(closes)
     chunk = n // (args.folds + 1)
@@ -417,7 +434,7 @@ def main() -> int:
             fingerprint=xs_gate.fingerprint(
                 args.factor, args.tf, args.universe, tuple(grid)
             ),
-            created_at=pd.Timestamp.utcnow().isoformat(),
+            created_at=pd.Timestamp.now("UTC").isoformat(),
             factor=args.factor,
             tf=args.tf,
             universe=args.universe,
