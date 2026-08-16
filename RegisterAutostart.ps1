@@ -13,8 +13,8 @@
        Start-Process powershell -Verb RunAs -ArgumentList "-File RegisterAutostart.ps1"
 
 .NOTES
-    - Task runs whether user is logged on or not, with highest privileges (for binding 0.0.0.0).
-    - Uses the current user's account; password is NOT stored (uses S4U logon).
+    - Task runs at logon, in the user's own (standard, non-elevated) session.
+    - Uses the current user's account; password is NOT stored (Interactive logon).
     - To unregister later: Unregister-ScheduledTask -TaskName "BingXAgentDashboard" -Confirm:$false
 #>
 
@@ -66,7 +66,19 @@ $settings = New-ScheduledTaskSettingsSet `
 # doar dupa ce te loghezi, nu si cand PC-ul e pornit fara utilizator. Pentru un
 # dashboard personal si un logger care aduna date cat lucrezi, e exact ce
 # trebuie - si, spre deosebire de S4U, chiar functioneaza.
-$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
+#
+# RunLevel Limited, nu Highest.
+#
+# "Highest" nu a fost niciodata necesar: legarea pe 0.0.0.0:3000 nu cere
+# privilegii de administrator pe Windows (doar porturile sub 1024 cer). Era
+# mostenit din varianta S4U originala si a devenit, testat direct, cauza
+# blocajului: task-ul pornea un powershell.exe elevat care ramanea in viata
+# ore intregi fara sa lanseze niciun proces copil si fara sa scrie niciun log -
+# vizibil in Task Scheduler ca "Running", invizibil oriunde altundeva, pentru
+# ca rula intr-un token cu integritate mai mare decat sesiunea normala. Un test
+# manual, neelevat, al aceluiasi RunAlways.ps1 a functionat perfect - dovada ca
+# elevarea era problema, nu solutia.
+$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Limited
 
 try {
     Register-ScheduledTask `
