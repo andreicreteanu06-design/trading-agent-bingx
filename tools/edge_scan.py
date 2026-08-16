@@ -74,6 +74,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import time
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -134,12 +135,21 @@ def pick_universe(client: BingXClient, size: int) -> list[str]:
     return [sym for sym, _ in rows[:size]]
 
 
+CACHE_DIR = "logs/ohlcv_cache"
+
+
+def _cache_path(sym: str, tf: str, bars: int) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in sym)
+    return os.path.join(CACHE_DIR, f"{safe}_{tf}_{bars}.pkl")
+
+
 def fetch_panel(
     client: BingXClient,
     symbols: list[str],
     tf: str,
     bars: int,
     min_bars: int = 300,
+    cache_hours: float = 3.0,
 ) -> dict[str, pd.DataFrame]:
     """
     `min_bars`: cate lumanari trebuie sa aiba un simbol ca sa fie pastrat.
@@ -150,14 +160,37 @@ def fetch_panel(
     (~170 de lumanari), iar un prag de cercetare aplicat acolo goleste universul
     complet - exact ce s-a intamplat: se cereau 300, se primeau 299, pentru ca
     lumanarea curenta incompleta e mereu eliminata, si nu ramanea niciun simbol.
+
+    `cache_hours`: cat timp se refoloseste ce s-a descarcat deja.
+
+    Aducerea a 50 de simboluri x 3000 de lumanari dureaza minute intregi si e
+    partea fragila a intregului lant - o intrerupere de retea la simbolul 47
+    pierde tot. Cu cache pe disc, o rulare intrerupta reia de unde a ramas, iar
+    experimentele repetate pe aceleasi date devin instantanee. Pe 4h, lumanarea
+    se schimba oricum o data la patru ore, deci trei ore de cache nu introduc
+    nicio invechire relevanta.
     """
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    fresh_after = time.time() - cache_hours * 3600.0
+
     out: dict[str, pd.DataFrame] = {}
     for i, sym in enumerate(symbols, 1):
-        try:
-            df = client.fetch_ohlcv_history(sym, tf, bars)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("  %s: fara date (%s)", sym, exc)
-            continue
+        path = _cache_path(sym, tf, bars)
+        df = None
+
+        if os.path.exists(path) and os.path.getmtime(path) > fresh_after:
+            try:
+                df = pd.read_pickle(path)
+            except Exception:  # noqa: BLE001
+                df = None  # cache corupt, se reincarca
+
+        if df is None:
+            try:
+                df = client.fetch_ohlcv_history(sym, tf, bars)
+                df.to_pickle(path)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("  %s: fara date (%s)", sym, exc)
+                continue
         if len(df) < min_bars:
             log.warning("  %s: doar %d lumanari, sarim", sym, len(df))
             continue
