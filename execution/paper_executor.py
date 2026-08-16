@@ -105,6 +105,25 @@ def append_ledger(row: dict) -> None:
         fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
 
 
+def load_last_ledger_entry() -> dict | None:
+    """
+    Ultima rulare din jurnal, pentru afisare (dashboard, --status).
+
+    Traieste aici, nu duplicat in app/server.py, din acelasi motiv pentru care
+    GRID si build_target_book au fost extrase mai devreme in acest proiect:
+    doua cititoare ale aceluiasi fisier diverg tacut la prima schimbare de
+    format.
+    """
+    if not os.path.exists(LEDGER_PATH):
+        return None
+    try:
+        with open(LEDGER_PATH, encoding="utf-8") as fh:
+            lines = [ln for ln in fh if ln.strip()]
+        return json.loads(lines[-1]) if lines else None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def funding_accrued_since(
     symbols: list[str], since: datetime | None, until: datetime
 ) -> dict[str, float]:

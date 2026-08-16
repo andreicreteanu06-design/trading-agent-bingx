@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
 from core.scanner import Scanner, read_signal_history
+from execution.paper_executor import load_last_ledger_entry, load_state as load_paper_state
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s", datefmt="%H:%M:%S"
@@ -223,6 +224,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"reports": _load_backtests()})
             return
 
+        if path == "/api/paper":
+            self._json(200, _paper_book())
+            return
+
         self._json(404, {"error": "not found"})
 
     # ------------------------------------------------------------------ POST
@@ -308,6 +313,46 @@ def _load_backtests() -> list[dict]:
         data.pop("trades", None)  # prea mare pentru dashboard
         out.append(data)
     return out
+
+
+def _paper_book() -> dict:
+    """
+    Cartea de hartie a strategiei cross-sectionale, pentru dashboard.
+
+    Strategie separata de scanner-ul de mai sus (BTC/ETH/SOL, expectanta
+    negativa) - cea validata walk-forward, rulata de
+    execution/paper_executor.py fara ordine reale. Vezi README, sectiunea
+    "Strategia cross-sectionala".
+    """
+    state = load_paper_state()
+    if state is None:
+        return {"exists": False}
+
+    positions = [
+        {
+            "symbol": sym,
+            "side": "long" if pos.qty > 0 else "short",
+            "notional_usdt": abs(pos.qty * pos.mark_price),
+            "mark_price": pos.mark_price,
+        }
+        for sym, pos in state.positions.items()
+    ]
+    positions.sort(key=lambda p: -p["notional_usdt"])
+
+    return {
+        "exists": True,
+        "started_at": state.started_at,
+        "last_updated_at": state.last_updated_at,
+        "capital_usdt": state.capital_usdt,
+        "equity_usdt": state.equity_usdt,
+        "price_pnl_usdt": state.price_pnl_usdt,
+        "funding_paid_usdt": state.funding_paid_usdt,
+        "fees_paid_usdt": state.fees_paid_usdt,
+        "trade_count": state.trade_count,
+        "gross_exposure_usdt": sum(p["notional_usdt"] for p in positions),
+        "positions": positions,
+        "last_run": load_last_ledger_entry(),
+    }
 
 
 def _local_ip() -> str:

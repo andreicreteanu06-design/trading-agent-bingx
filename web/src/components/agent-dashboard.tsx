@@ -28,6 +28,7 @@ import {
 import { AnimateDigits } from "@/components/ui/animate-digits";
 import { ExecLog, type LogLine } from "@/components/ui/exec-log";
 import { OutcomeDonut, type OutcomeSlice } from "@/components/ui/outcome-donut";
+import { PaperBookSection } from "@/components/paper-book";
 import { RiskEnvelope } from "@/components/risk-envelope";
 import { ScoreChart, type ScorePoint } from "@/components/ui/score-chart";
 import { cn } from "@/lib/utils";
@@ -176,9 +177,9 @@ const order: Record<SymbolResult["status"], number> = {
 /* ------------------------------------------------------------------ */
 
 /** null readout, ca pe un instrument fizic */
-const NIL = "--";
+export const NIL = "--";
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     cache: "no-store",
@@ -188,7 +189,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-function fmt(n: number | null | undefined, digits = 2) {
+export function fmt(n: number | null | undefined, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return NIL;
   return new Intl.NumberFormat("ro-RO", {
     minimumFractionDigits: digits,
@@ -196,14 +197,14 @@ function fmt(n: number | null | undefined, digits = 2) {
   }).format(n);
 }
 
-function fmtPrice(n: number | null | undefined) {
+export function fmtPrice(n: number | null | undefined) {
   if (n === null || n === undefined || Number.isNaN(n)) return NIL;
   const abs = Math.abs(n);
   const digits = abs >= 1000 ? 1 : abs >= 10 ? 2 : abs >= 1 ? 3 : 5;
   return fmt(n, digits);
 }
 
-function localTime(iso?: string) {
+export function localTime(iso?: string) {
   if (!iso) return NIL;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return NIL;
@@ -228,7 +229,7 @@ function localTime(iso?: string) {
  * ceea ce e o incalcare a regulilor hook-urilor si se strica la prima
  * schimbare de `prefers-reduced-motion`.
  */
-function Panel({
+export function Panel({
   children,
   className,
 }: {
@@ -243,12 +244,12 @@ function Panel({
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
+export function Label({ children }: { children: React.ReactNode }) {
   return <span className="label">{children}</span>;
 }
 
 /** celula de citire: eticheta mica, valoare mono */
-function Readout({
+export function Readout({
   label,
   value,
   tone = "hi",
@@ -280,7 +281,7 @@ function Readout({
 }
 
 /** Citire mare care se aprinde scurt cand valoarea chiar s-a schimbat (§9). */
-function LiveMetric({
+export function LiveMetric({
   label,
   value,
   helper,
@@ -383,7 +384,7 @@ function SidePill({ side }: { side: "long" | "short" }) {
   );
 }
 
-function Notice({
+export function Notice({
   tone,
   title,
   text,
@@ -424,7 +425,7 @@ function Notice({
   );
 }
 
-function Empty({
+export function Empty({
   icon: Icon,
   text,
 }: {
@@ -439,7 +440,7 @@ function Empty({
   );
 }
 
-function SectionHead({
+export function SectionHead({
   title,
   meta,
 }: {
@@ -1080,6 +1081,15 @@ export function AgentDashboard() {
             />
           )}
         </div>
+
+        {/* ============ hartie cross-sectionala ============ */}
+        {/*
+          Strategie separata de scanner-ul BTC/ETH/SOL de mai jos - aceea are
+          expectanta negativa masurata, asta a trecut validare walk-forward.
+          Statiaza deasupra sectiunii vechi tocmai ca sa nu se confunde: e
+          sistemul cu edge real, nu instrumentele de risc pentru cel fara.
+        */}
+        <PaperBookSection />
 
         {/* ============ semnale (§6.2) ============ */}
         <SectionHead
