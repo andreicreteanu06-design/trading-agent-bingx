@@ -89,6 +89,19 @@ log = logging.getLogger("edge_scan")
 # Sub atatea simboluri intr-o lumanare, corelatia de rang e zgomot pur.
 MIN_SYMBOLS_PER_BAR = 8
 
+# Active reale tokenizate, excluse explicit din sectiunea transversala.
+#
+# Nu sunt crypto: XAUT si PAXG sunt aur, iar produsele cu "USD" in baza sunt
+# actiuni si marfuri (ASML, petrol). Respecta alt orar, au alti factori de risc,
+# si unele nici macar nu tranzactioneaza cand tranzactioneaza restul.
+#
+# Excluderea nu e cosmetica. Dimensionarea invers proportionala cu volatilitatea
+# da cea mai mare pondere celui mai calm activ, iar aurul tokenizat e de departe
+# cel mai calm din lista. Lasat inauntru, XAUT primea 11.5% din carte - cea mai
+# mare pozitie long - si strategia devenea pe tacute un pariu pe aur, cu numele
+# de strategie pe altcoins.
+TOKENIZED_RWA = frozenset({"XAUT", "PAXG", "XAU", "TSLA", "NVDA", "AAPL"})
+
 # Pragul clasic de semnificatie, inainte de corectia pentru testare multipla.
 T_RAW = 2.0
 
@@ -108,13 +121,10 @@ def pick_universe(client: BingXClient, size: int) -> list[str]:
     for sym, t in tickers.items():
         if not sym.endswith("/USDT:USDT"):
             continue
-        # BingX listeaza si actiuni si marfuri tokenizate (aur, petrol, ASML).
-        # Baza lor contine "USD" - un activ crypto real nu are asa ceva in nume.
-        # Trebuie scoase: respecta orarul bursei, au weekend-uri moarte si nu
-        # impart factorii de risc ai crypto-ului. Lasate inauntru, ar dilua
-        # sectiunea transversala cu active care nici macar nu tranzactioneaza
-        # cand tranzactioneaza restul.
-        if "USD" in sym.split("/")[0]:
+        base = sym.split("/")[0]
+        # Produsele tokenizate pe actiuni si marfuri au "USD" in baza
+        # (NCCOGOLD2USD, NCSKASML2USD); aurul are nume proprii. Ambele afara.
+        if "USD" in base or base.upper() in TOKENIZED_RWA:
             continue
         vol = t.get("quoteVolume") or 0.0
         if vol > 0:
@@ -125,8 +135,22 @@ def pick_universe(client: BingXClient, size: int) -> list[str]:
 
 
 def fetch_panel(
-    client: BingXClient, symbols: list[str], tf: str, bars: int
+    client: BingXClient,
+    symbols: list[str],
+    tf: str,
+    bars: int,
+    min_bars: int = 300,
 ) -> dict[str, pd.DataFrame]:
+    """
+    `min_bars`: cate lumanari trebuie sa aiba un simbol ca sa fie pastrat.
+
+    Nu e o constanta, pentru ca cele doua utilizari cer lucruri diferite. La
+    cercetare vrem istorie lunga si e corect sa aruncam listarile recente. La
+    generarea semnalului curent avem nevoie doar de incalzirea indicatorilor
+    (~170 de lumanari), iar un prag de cercetare aplicat acolo goleste universul
+    complet - exact ce s-a intamplat: se cereau 300, se primeau 299, pentru ca
+    lumanarea curenta incompleta e mereu eliminata, si nu ramanea niciun simbol.
+    """
     out: dict[str, pd.DataFrame] = {}
     for i, sym in enumerate(symbols, 1):
         try:
@@ -134,7 +158,7 @@ def fetch_panel(
         except Exception as exc:  # noqa: BLE001
             log.warning("  %s: fara date (%s)", sym, exc)
             continue
-        if len(df) < 300:
+        if len(df) < min_bars:
             log.warning("  %s: doar %d lumanari, sarim", sym, len(df))
             continue
         out[sym] = df.set_index("datetime")

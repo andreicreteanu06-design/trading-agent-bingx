@@ -235,6 +235,71 @@ Alte lucruri pe care le vei descoperi altfel pe pielea ta:
 
 ---
 
+## Strategia cross-secțională pe altcoins (cea care a trecut validarea)
+
+Strategia de mai sus, pe serie de timp, a fost abandonată după ce măsurătorile
+au arătat că nu are edge. Ce a urmat e o axă complet diferită, și singura din
+proiect care a trecut vreodată o validare walk-forward.
+
+**Ideea.** În loc de „urcă BTC?", întrebarea e „care dintre cele 40 de monede o
+duce mai bine decât celelalte?". Se deține permanent o carte long-short,
+dollar-neutrală, rebalansată o dată la câteva zile. Randamentul vine din
+diferența dintre picioare, nu dintr-o tranzacție individuală — deci nu există
+„semnale" în sensul clasic, și nu contează dacă piața urcă sau coboară.
+
+Factorul e `range_pos`: unde se află moneda în intervalul ultimelor 72 de
+lumânări. Long pe cele aproape de maxime, short pe cele aproape de minime.
+
+```bash
+python tools\edge_scan.py --tf 4h --universe 50
+```
+Măsoară puterea predictivă a 16 factori, cu corecție Newey-West și prag
+Bonferroni. Rulează asta înainte de a inventa orice strategie nouă.
+
+```bash
+python backtest\validate_xs.py --factor range_pos --folds 8
+```
+Validare walk-forward: parametrii se aleg pe date anterioare, se măsoară pe date
+de după. Scrie certificatul pe care îl citește poarta.
+
+```bash
+python tools\xs_signals.py --capital 500 --commit
+```
+Cartea curentă și — mai important — ce s-a schimbat față de ultima rulare. Doar
+diferența se tranzacționează; restul pozițiilor rămân pe loc.
+
+### Ce s-a măsurat, și ce NU acoperă
+
+Rezultate out-of-sample pe ~1.2 ani, cu costuri taker pe ambele capete:
+
+| rulare | anualizat | Sharpe | maxDD | t (NW) | folduri+ |
+|---|---|---|---|---|---|
+| 40 simboluri, 5 folduri | +35.5% | 1.77 | −16.2% | 2.01 | 4/5 |
+| 29 simboluri, 5 folduri | +39.7% | 2.03 | −14.1% | 1.95 | 3/5 |
+| 40 simboluri, 8 folduri | +42.7% | 2.10 | −15.4% | 2.61 | 6/8 |
+
+Beta pe (altcoins − BTC) sub 0.15 peste tot, deci nu e un pariu pe altseason
+deghizat — verificat explicit, pentru că familia low-vol chiar era.
+
+**Limitele, care contează la fel de mult:**
+
+- `t` oscilează în jurul lui 2.0 în funcție de universul și granularitatea
+  foldurilor. E marginal, nu concludent.
+- Doar ~1.2 ani out-of-sample. Cel mai prost fold a fost **−51.9% pe două luni**.
+- Universul e ales după volumul de azi, deci monedele care au murit între timp
+  lipsesc din test.
+- Factorul a fost găsit căutând prin ~64 de teste. Umbra testării multiple
+  acoperă toată căutarea, nu doar testul final.
+- **Costul de funding nu e modelat în validare.** `xs_signals.py` îl afișează
+  pentru cartea curentă, pentru că `range_pos` cumpără exact monedele unde
+  long-urile sunt aglomerate și funding-ul e mare.
+
+Poarta din `strategy/xs_gate.py` refuză să marcheze cartea drept
+tranzacționabilă dacă ultima validare nu a trecut toate cele patru condiții.
+Când `t` iese sub 2.0, poarta se închide singură — și așa trebuie.
+
+---
+
 ## Ce urmează, dacă vrei să continui
 
 - Backtester peste `logs/signals.jsonl` + date istorice

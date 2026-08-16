@@ -107,7 +107,11 @@ def main() -> int:
 
     client = BingXClient()
     symbols = pick_universe(client, args.universe)
-    panel = fetch_panel(client, symbols, args.tf, 300)
+    # 400 aduse, 200 cerute: cel mai lung indicator din compute_features are o
+    # fereastra de 168 de lumanari, deci 200 e incalzire suficienta si nu
+    # elimina inutil monedele listate recent - care sunt adesea exact cele cu
+    # cea mai mare dispersie, adica exact ce ordoneaza strategia.
+    panel = fetch_panel(client, symbols, args.tf, 400, min_bars=200)
     if len(panel) < 8:
         print(f"Doar {len(panel)} simboluri cu date. Prea putine.")
         return 1
@@ -159,6 +163,35 @@ def main() -> int:
 
     show(longs, f"LONG  (cele mai bine clasate {len(longs)} din {(w > 0).sum()})")
     show(shorts, f"SHORT (cele mai slab clasate {len(shorts)} din {(w < 0).sum()})")
+
+    # --- scurgerea din funding ---
+    #
+    # Nu e o formalitate pe aceasta strategie. range_pos cumpara monedele
+    # aproape de maximele lor - exact acelea unde long-urile sunt aglomerate si
+    # funding-ul e cel mai mare - si shorteaza monedele de la minime, unde
+    # funding-ul e mic sau negativ. Pe un cos long-short obisnuit funding-ul se
+    # anuleaza intre picioare; aici factorul se aliniaza cu el, deci se aduna.
+    # Se plateste la fiecare 8 ore, iar pozitiile se tin zile intregi.
+    try:
+        rates = client.fetch_funding_rates(list(w.index))
+        fr = pd.Series(rates, dtype=float).reindex(w.index).dropna()
+        if not fr.empty:
+            ww = w.reindex(fr.index)
+            # sum(w * fr) este PLATA: un long cu funding pozitiv plateste, un
+            # short cu funding pozitiv incaseaza. Impactul pe randament e opusul
+            # ei, si asta se afiseaza - ca sa nu existe niciun dubiu de semn.
+            paid_8h = float((ww * fr).sum())
+            impact_year = -paid_8h * 3 * 365
+            verb = "adauga" if impact_year >= 0 else "scade"
+            print(f"  funding: {verb} {abs(impact_year):.1%} pe an "
+                  f"({-paid_8h:+.4%} pe 8h)")
+            if impact_year < -0.05:
+                print("    Atentie: peste 5% pe an pierdut din funding. NU e")
+                print("    modelat in validare, deci randamentul real e cu atat")
+                print("    mai mic decat cel din certificat.")
+            print()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Nu am putut citi funding: %s", exc)
 
     gross = w.abs().sum()
     net = w.sum()

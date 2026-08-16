@@ -78,6 +78,16 @@ log = logging.getLogger("validate_xs")
 MIN_T = 2.0
 MIN_FOLD_WIN_RATE = 0.6
 
+# Praguri de esantion, fara de care restul verificarilor nu inseamna nimic.
+#
+# O rulare de test pe 12 simboluri si 0.27 ani a raportat +210% pe an, Sharpe
+# 6.58 si t 2.58 - a trecut toate cele patru conditii statistice si a scris un
+# certificat valid. Amprenta a impiedicat folosirea lui pe universul real, dar
+# asta a fost noroc de proiectare, nu intentie. Un t calculat pe trei luni si o
+# mana de monede masoara zgomot cu multe zecimale.
+MIN_OOS_YEARS = 0.75
+MIN_SYMBOLS = 20
+
 
 # Semnul IC-ului masurat de tools/edge_scan.py, per factor. Un factor cu IC
 # negativ (valoare mare -> randament viitor mic) trebuie intors inainte de a fi
@@ -380,7 +390,12 @@ def main() -> int:
         beta_oos = float(np.polyfit(g, stitched, 1)[0])
     print(f"    beta pe (alt - BTC) : {beta_oos:>8.2f}")
 
+    years = len(stitched) / bpy
     checks = [
+        (f"esantion OOS >= {MIN_OOS_YEARS} ani (are {years:.2f})",
+         years >= MIN_OOS_YEARS),
+        (f"univers >= {MIN_SYMBOLS} simboluri (are {len(panel)})",
+         len(panel) >= MIN_SYMBOLS),
         ("randament OOS pozitiv", ann > 0),
         (f"t Newey-West > {MIN_T}", t > MIN_T),
         (f"folduri pozitive >= {MIN_FOLD_WIN_RATE:.0%}", win_rate >= MIN_FOLD_WIN_RATE),
