@@ -67,6 +67,38 @@ def load_book() -> dict:
         return {}
 
 
+def build_target_book(
+    client: BingXClient, factor: str, tf: str, universe: int
+) -> tuple[pd.Series, pd.Timestamp, int]:
+    """
+    Ponderile tinta, gata orientate si dimensionate, plus data ultimei lumanari
+    folosite si cate simboluri au avut date.
+
+    Extras din main() ca sa existe un singur loc care construieste cartea -
+    tools/execution/paper_executor.py o foloseste pe aceeasi cale, si o a doua
+    copie a acestei logici ar fi exact greseala de duplicare a GRID-ului
+    reparata mai devreme in acest proiect.
+    """
+    symbols = pick_universe(client, universe)
+    # 400 aduse, 200 cerute: cel mai lung indicator din compute_features are o
+    # fereastra de 168 de lumanari, deci 200 e incalzire suficienta si nu
+    # elimina inutil monedele listate recent - care sunt adesea exact cele cu
+    # cea mai mare dispersie, adica exact ce ordoneaza strategia.
+    panel = fetch_panel(client, symbols, tf, 400, min_bars=200)
+    if len(panel) < 8:
+        raise ValueError(f"Doar {len(panel)} simboluri cu date. Prea putine.")
+
+    feats = {s: compute_features(d) for s, d in panel.items()}
+    sig = factor_signal(feats, factor)
+    vols = pd.DataFrame({s: f["vol_24"] for s, f in feats.items()})
+
+    w = build_weights(sig.iloc[-1], vols.iloc[-1], vol_scale=True)
+    if w.empty:
+        raise ValueError("Nu s-a putut construi cartea (prea putine date valide).")
+
+    return w, sig.index[-1], len(panel)
+
+
 def save_book(weights: pd.Series) -> None:
     os.makedirs(os.path.dirname(BOOK_PATH) or ".", exist_ok=True)
     with open(BOOK_PATH, "w", encoding="utf-8") as fh:
@@ -101,31 +133,16 @@ def main() -> int:
     )
 
     client = BingXClient()
-    symbols = pick_universe(client, args.universe)
-    # 400 aduse, 200 cerute: cel mai lung indicator din compute_features are o
-    # fereastra de 168 de lumanari, deci 200 e incalzire suficienta si nu
-    # elimina inutil monedele listate recent - care sunt adesea exact cele cu
-    # cea mai mare dispersie, adica exact ce ordoneaza strategia.
-    panel = fetch_panel(client, symbols, args.tf, 400, min_bars=200)
-    if len(panel) < 8:
-        print(f"Doar {len(panel)} simboluri cu date. Prea putine.")
+    try:
+        w, asof, n_symbols = build_target_book(client, args.factor, args.tf, args.universe)
+    except ValueError as exc:
+        print(str(exc))
         return 1
-
-    feats = {s: compute_features(d) for s, d in panel.items()}
-    sig = factor_signal(feats, args.factor)
-    vols = pd.DataFrame({s: f["vol_24"] for s, f in feats.items()})
-
-    w = build_weights(sig.iloc[-1], vols.iloc[-1], vol_scale=True)
-    if w.empty:
-        print("Nu s-a putut construi cartea (prea putine date valide).")
-        return 1
-
-    asof = sig.index[-1]
 
     print()
     print("=" * 78)
     print(f"  CARTE CROSS-SECTIONALA   {args.factor}   {args.tf}   "
-          f"{len(panel)} simboluri")
+          f"{n_symbols} simboluri")
     print(f"  ultima lumanare inchisa: {asof:%Y-%m-%d %H:%M} UTC")
     print("=" * 78)
 

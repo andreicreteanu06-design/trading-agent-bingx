@@ -160,12 +160,27 @@ class BingXClient:
 
         return out
 
+    def fetch_order_book(self, symbol: str, limit: int = 50) -> dict[str, Any]:
+        return self._exchange.fetch_order_book(symbol, limit=limit)
+
     def fetch_last_price(self, symbol: str) -> float:
         ticker = self._exchange.fetch_ticker(symbol)
         price = ticker.get("last") or ticker.get("close")
         if price is None:
             raise RuntimeError(f"Fara pret pentru {symbol}")
         return float(price)
+
+    def fetch_last_prices(self, symbols: list[str]) -> dict[str, float]:
+        """Pretul curent pentru mai multe simboluri, intr-o singura cerere."""
+        self.load_markets()
+        tickers = self._exchange.fetch_tickers(symbols)
+        out: dict[str, float] = {}
+        for sym in symbols:
+            t = tickers.get(sym) or {}
+            price = t.get("last") or t.get("close")
+            if price is not None:
+                out[sym] = float(price)
+        return out
 
     # ------------------------------------------------------------------- cont
     def fetch_equity_usdt(self) -> float | None:
