@@ -55,7 +55,18 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 3 `
     -RestartInterval (New-TimeSpan -Minutes 2)
 
-$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType S4U -RunLevel Highest
+# LogonType Interactive, nu S4U.
+#
+# S4U ("Service For User") ruleaza fara sesiune interactiva si fara credentiale
+# de retea. Testat aici: task-ul pornea powershell.exe, procesul chiar traia,
+# dar nu lansa niciun proces copil si nu scria niciun log - esec complet tacut,
+# in timp ce Task Scheduler raporta senin "Running".
+#
+# Interactive ruleaza in sesiunea utilizatorului logat. Compromisul: porneste
+# doar dupa ce te loghezi, nu si cand PC-ul e pornit fara utilizator. Pentru un
+# dashboard personal si un logger care aduna date cat lucrezi, e exact ce
+# trebuie - si, spre deosebire de S4U, chiar functioneaza.
+$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Highest
 
 try {
     Register-ScheduledTask `

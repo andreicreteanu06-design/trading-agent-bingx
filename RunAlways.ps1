@@ -56,9 +56,23 @@ $LauncherLog = Join-Path $LogDir "launcher.log"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 function Write-Log {
+    <#
+        Writes to the log file only — deliberately NOT via Tee-Object.
+
+        Tee-Object also emits to the success stream, which needs somewhere to
+        go. Task Scheduler runs this with S4U logon and no console attached, so
+        that write throws, and with $ErrorActionPreference = "Stop" it killed
+        the launcher on its very first log line. The symptom was maddening: the
+        task reported "Running", yet no child process and no log file ever
+        appeared. Add-Content has no such dependency.
+    #>
     param([string]$Msg)
     $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$ts  $Msg" | Tee-Object -FilePath $LauncherLog -Append
+    try {
+        Add-Content -Path $LauncherLog -Value "$ts  $Msg" -Encoding UTF8 -ErrorAction Stop
+    } catch {
+        # Logging must never be the thing that takes the supervisor down.
+    }
 }
 
 function Start-ProcessWithLogging {
