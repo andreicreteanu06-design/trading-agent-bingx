@@ -25,9 +25,10 @@ log = logging.getLogger(__name__)
 DEFAULT_PATH = "logs/validation_xs.json"
 
 
-def path_for(factor: str, vol_target: float = 0.0) -> str:
+def path_for(factor: str, vol_target: float = 0.0, funding_cost: bool = True) -> str:
     """
-    Un certificat per factor si per tinta de volatilitate, in fisiere separate.
+    Un certificat per configuratie (factor, tinta de volatilitate, cost de
+    funding), in fisiere separate.
 
     Cu un singur fisier comun, validarea factorului B stergea certificatul
     factorului A. Amprenta prindea substituirea si poarta se inchidea corect,
@@ -35,18 +36,26 @@ def path_for(factor: str, vol_target: float = 0.0) -> str:
     rezultat castigat cinstit, si trebuia refacut. Numele contine factorul
     tocmai ca rezultatele sa se acumuleze, nu sa se calce in picioare.
 
-    Tinta de volatilitate intra in nume din acelasi motiv: o rulare cu tinta si
-    una fara sunt doua configuratii diferite, cu doua rezultate diferite, si
-    amandoua merita pastrate ca sa poata fi comparate.
+    Tinta de volatilitate si costul de funding intra in nume din acelasi
+    motiv: schimba randamentul si economia strategiei, deci sunt configuratii
+    diferite, nu variante ale aceleiasi rulari.
     """
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in factor)
+    suffix = ""
     if vol_target > 0:
-        return f"logs/validation_xs_{safe}_vt{round(vol_target * 100)}.json"
-    return f"logs/validation_xs_{safe}.json"
+        suffix += f"_vt{round(vol_target * 100)}"
+    if not funding_cost:
+        suffix += "_nofunding"
+    return f"logs/validation_xs_{safe}{suffix}.json"
 
 
 def fingerprint(
-    factor: str, tf: str, universe: int, grid: tuple, vol_target: float = 0.0
+    factor: str,
+    tf: str,
+    universe: int,
+    grid: tuple,
+    vol_target: float = 0.0,
+    funding_cost: bool = True,
 ) -> str:
     """
     Amprenta a ceea ce defineste strategia.
@@ -55,13 +64,16 @@ def fingerprint(
     simboluri nu spune nimic despre 10 - latimea sectiunii transversale ESTE
     strategia, nu un detaliu de configurare.
 
-    La fel si tinta de volatilitate: schimba dimensionarea fiecarei pozitii,
-    deci schimba si randamentul, si drawdown-ul. Fara ea in amprenta, doua
-    rulari cu tinte diferite scriu peste acelasi certificat si poarta nu mai
-    poate spune care configuratie a fost de fapt validata.
+    La fel si tinta de volatilitate si costul de funding: fiecare schimba
+    randamentul si drawdown-ul raportat. Fara ele in amprenta, doua rulari cu
+    economii diferite scriu peste acelasi certificat si poarta nu mai poate
+    spune care configuratie a fost de fapt validata. `funding_cost` mai ales:
+    inainte de aceasta modificare costul nu era deloc modelat, iar un
+    certificat vechi (nemodelat) nu are voie sa treaca drept echivalent cu
+    unul nou doar pentru ca restul parametrilor coincid.
     """
     raw = (f"factor={factor}|tf={tf}|universe={universe}|grid={sorted(grid)!r}"
-           f"|vol_target={vol_target:g}")
+           f"|vol_target={vol_target:g}|funding_cost={funding_cost}")
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -121,6 +133,7 @@ def check(
     path: str = DEFAULT_PATH,
     max_age_days: int = 30,
     vol_target: float = 0.0,
+    funding_cost: bool = True,
 ) -> XSGateResult:
     cert = load_certificate(path)
     if cert is None:
@@ -134,7 +147,7 @@ def check(
             cert,
         )
 
-    want = fingerprint(factor, tf, universe, grid, vol_target)
+    want = fingerprint(factor, tf, universe, grid, vol_target, funding_cost)
     if cert.fingerprint != want:
         return XSGateResult(
             False,

@@ -270,29 +270,42 @@ diferența se tranzacționează; restul pozițiilor rămân pe loc.
 
 ### Ce s-a măsurat, și ce NU acoperă
 
-Rezultate out-of-sample pe ~1.2 ani, cu costuri taker pe ambele capete:
+Rezultate out-of-sample pe ~1.2 ani, cu costuri taker pe ambele capete. Tabelul
+de mai jos e istoricul procesului de validare — fiecare rând a fost cel mai
+bun rezultat cunoscut la momentul lui, dar e depășit de următorul:
 
 | rulare | anualizat | Sharpe | maxDD | t (NW) | folduri+ |
 |---|---|---|---|---|---|
 | 40 simboluri, 5 folduri | +35.5% | 1.77 | −16.2% | 2.01 | 4/5 |
 | 29 simboluri, 5 folduri | +39.7% | 2.03 | −14.1% | 1.95 | 3/5 |
 | 40 simboluri, 8 folduri | +42.7% | 2.10 | −15.4% | 2.61 | 6/8 |
+| + fix rebalansare (index relativ la fold) | +62.2% | 2.35 | −13.1% | 2.52 | 7/8 |
+| **+ funding modelat corect (curent)** | **+57.0%** | **2.33** | **−14.0%** | **2.49** | **5/8** |
+
+**Ultimul rând e cel valid** — certificatul din `logs/validation_xs_range_pos.json`.
+Funding-ul real scade randamentul cu ~2.3 puncte procentuale pe an față de
+varianta fără cost de funding (fold-urile pozitive scad de la 7/8 la 5/8 pe
+acest set de date, pentru că grila de parametri se re-alege ținând cont și de
+costul de funding — nu doar randamentul e mai mic, ci alegerile de configurare
+se schimbă). Real, dar sub cel mai rău scenariu posibil, și validarea tot trece.
 
 Beta pe (altcoins − BTC) sub 0.15 peste tot, deci nu e un pariu pe altseason
 deghizat — verificat explicit, pentru că familia low-vol chiar era.
 
 **Limitele, care contează la fel de mult:**
 
-- `t` oscilează în jurul lui 2.0 în funcție de universul și granularitatea
+- `t` oscilează în jurul lui 2.0-2.5 în funcție de universul și granularitatea
   foldurilor. E marginal, nu concludent.
-- Doar ~1.2 ani out-of-sample. Cel mai prost fold a fost **−51.9% pe două luni**.
+- Doar ~1.2 ani out-of-sample. Cel mai prost fold a fost **−32.8% pe două luni**.
 - Universul e ales după volumul de azi, deci monedele care au murit între timp
   lipsesc din test.
 - Factorul a fost găsit căutând prin ~64 de teste. Umbra testării multiple
   acoperă toată căutarea, nu doar testul final.
-- **Costul de funding nu e modelat în validare.** `xs_signals.py` îl afișează
-  pentru cartea curentă, pentru că `range_pos` cumpără exact monedele unde
-  long-urile sunt aglomerate și funding-ul e mare.
+- Funding-ul se citește de la Binance (istoric adânc), nu de la BingX (unde se
+  execută de fapt, dar cu doar ~67 de zile de istoric public) — aceeași
+  convenție ca la `tools/funding_edge.py`: semnalul e un fenomen de piață,
+  executabil pe orice venue. ~1-2 simboluri din univers nu au istoric pe
+  Binance și intră cu cost de funding zero, marcat explicit în log.
 
 Poarta din `strategy/xs_gate.py` refuză să marcheze cartea drept
 tranzacționabilă dacă ultima validare nu a trecut toate cele patru condiții.

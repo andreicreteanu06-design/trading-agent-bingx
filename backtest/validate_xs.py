@@ -69,7 +69,14 @@ import pandas as pd
 from config import CONFIG
 from exchange.bingx_client import BingXClient
 from strategy import xs_gate
-from tools.edge_scan import MIN_SYMBOLS_PER_BAR, compute_features, fetch_panel, pick_universe
+from tools.edge_scan import (
+    MIN_SYMBOLS_PER_BAR,
+    align_funding_to_bars,
+    compute_features,
+    fetch_funding_panel,
+    fetch_panel,
+    pick_universe,
+)
 from tools.funding_edge import nw_t_stat
 
 log = logging.getLogger("validate_xs")
@@ -239,6 +246,7 @@ def simulate(
     start: int,
     end: int,
     vol_target: float = 0.0,
+    funding: pd.DataFrame | None = None,
 ) -> pd.Series:
     """
     Randamentele nete ale cartii intre barele [start, end).
@@ -247,6 +255,12 @@ def simulate(
     construita atunci castiga randamentul barei i+1 incolo.
 
     `vol_target` e volatilitatea tinta PE BARA (0 = expunere bruta fixa).
+
+    `funding`: rata de funding aplicabila la fiecare bara (0 in afara
+    decontarilor). Aplicata pe ponderea DEJA detinuta in bara respectiva -
+    aceeasi carte expusa randamentului de pret al barei e expusa si decontarii
+    care cade in acel interval, deci foloseste acelasi `w`, dinainte de orice
+    rebalansare la aceasta bara.
     """
     rets = closes.pct_change()
     w = pd.Series(dtype=float)
@@ -255,9 +269,17 @@ def simulate(
 
     for i in range(start, min(end, len(closes))):
         gross = 0.0
+        funding_pnl = 0.0
         if not w.empty:
             r = rets.iloc[i].reindex(w.index).fillna(0.0)
             gross = float((w * r).sum())
+            if funding is not None:
+                # Semnul se citeste direct din ponderea long/short: rata
+                # pozitiva inseamna long-urile platesc, deci long (w>0) pierde
+                # w*f si short (w<0) incaseaza acelasi produs cu semn opus -
+                # o singura formula acopera ambele directii.
+                f = funding.iloc[i].reindex(w.index).fillna(0.0)
+                funding_pnl = -float((w * f).sum())
 
         cost = 0.0
         # Rebalansarea se numara de la INCEPUTUL ferestrei, nu de la indexul
@@ -283,7 +305,7 @@ def simulate(
                 cost = turnover * cost_per_side
                 w = new_w
 
-        out.append(gross - cost)
+        out.append(gross + funding_pnl - cost)
         stamps.append(closes.index[i])
 
     return pd.Series(out, index=stamps)
@@ -318,6 +340,8 @@ def main() -> int:
                    help="volatilitate anualizata tinta a cartii (0 = expunere fixa)")
     p.add_argument("--hedge-regime", action="store_true",
                    help="neutralizeaza beta pe (altcoins - BTC)")
+    p.add_argument("--no-funding-cost", action="store_true",
+                   help="dezactiveaza costul de funding (implicit: modelat)")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
@@ -341,6 +365,24 @@ def main() -> int:
     feats = {s: compute_features(d) for s, d in panel.items()}
     sig = factor_signal(feats, args.factor)
     vols = pd.DataFrame({s: f["vol_24"] for s, f in feats.items()})
+
+    funding_panel = None
+    if not args.no_funding_cost:
+        # Costul de funding NU era modelat pana acum: pe cartea veche, masurat
+        # separat la -4.5%/an, si absent din randamentul raportat. range_pos
+        # cumpara exact monedele aproape de maxime - unde long-urile sunt
+        # aglomerate si funding-ul e mare - deci costul nu e simetric intre
+        # picioare si nu se anuleaza doar pentru ca cartea e dollar-neutrala.
+        span_days = int((closes.index[-1] - closes.index[0]).days) + 5
+        raw_funding = fetch_funding_panel(list(closes.columns), span_days)
+        missing = [s for s in closes.columns if s not in raw_funding]
+        if missing:
+            log.warning(
+                "Fara istoric de funding pentru %d/%d simboluri (cost 0 acolo): %s",
+                len(missing), len(closes.columns),
+                ", ".join(missing[:5]) + ("..." if len(missing) > 5 else ""),
+            )
+        funding_panel = align_funding_to_bars(raw_funding, closes.index)
 
     rets = closes.pct_change()
     btc = "BTC/USDT:USDT"
@@ -382,7 +424,7 @@ def main() -> int:
         # --- alegerea configuratiei, exclusiv pe date de antrenament ---
         best, best_sh = None, -1e9
         for hold, vs in grid:
-            r = simulate(closes, sig, vols, hold, vs, cost, 200, is_end, vt)
+            r = simulate(closes, sig, vols, hold, vs, cost, 200, is_end, vt, funding_panel)
             if args.hedge_regime:
                 g = regime.reindex(r.index).fillna(0.0)
                 if g.std() > 0:
@@ -398,13 +440,13 @@ def main() -> int:
         # test. Reestimarea pe test ar fi privire in viitor.
         beta_is = 0.0
         if args.hedge_regime:
-            r_is = simulate(closes, sig, vols, hold, vs, cost, 200, is_end, vt)
+            r_is = simulate(closes, sig, vols, hold, vs, cost, 200, is_end, vt, funding_panel)
             g_is = regime.reindex(r_is.index).fillna(0.0)
             if g_is.std() > 0:
                 beta_is = float(np.polyfit(g_is, r_is, 1)[0])
 
         # --- masurarea, exclusiv pe date nevazute ---
-        r_oos = simulate(closes, sig, vols, hold, vs, cost, is_end, oos_end, vt)
+        r_oos = simulate(closes, sig, vols, hold, vs, cost, is_end, oos_end, vt, funding_panel)
         if args.hedge_regime:
             r_oos = hedge(r_oos, regime, beta_is)
 
@@ -433,6 +475,8 @@ def main() -> int:
     # o rulare cu tinta de volatilitate suprascrie seria celei fara, si comparatia
     # dintre ele devine imposibila exact cand ai nevoie de ea.
     suffix = f"_vt{round(args.vol_target * 100)}" if args.vol_target > 0 else ""
+    if args.no_funding_cost:
+        suffix += "_nofunding"
     rets_path = f"logs/xs_returns_{args.factor}{suffix}.csv"
     os.makedirs("logs", exist_ok=True)
     stitched.rename("ret").to_csv(rets_path, index_label="datetime")
@@ -487,7 +531,8 @@ def main() -> int:
         xs_gate.XSCertificate(
             passed=passed,
             fingerprint=xs_gate.fingerprint(
-                args.factor, args.tf, args.universe, tuple(grid), args.vol_target
+                args.factor, args.tf, args.universe, tuple(grid),
+                args.vol_target, not args.no_funding_cost,
             ),
             created_at=pd.Timestamp.now("UTC").isoformat(),
             factor=args.factor,
@@ -504,7 +549,7 @@ def main() -> int:
             period_end=str(stitched.index[-1]),
             notes=[lbl for lbl, ok in checks if not ok],
         ),
-        path=xs_gate.path_for(args.factor, args.vol_target),
+        path=xs_gate.path_for(args.factor, args.vol_target, not args.no_funding_cost),
     )
 
     print()

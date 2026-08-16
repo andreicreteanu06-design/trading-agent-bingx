@@ -199,6 +199,125 @@ def fetch_panel(
     return out
 
 
+FUNDING_CACHE_DIR = "logs/funding_cache"
+
+
+def _funding_cache_path(sym: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in sym)
+    return os.path.join(FUNDING_CACHE_DIR, f"{safe}.pkl")
+
+
+def fetch_funding_panel(
+    symbols: list[str], days: int, cache_hours: float = 24.0
+) -> dict[str, pd.DataFrame]:
+    """
+    Istoric de funding per simbol, de la Binance.
+
+    De la Binance, nu de la BingX: BingX intoarce maximum 200 de inregistrari
+    (~67 de zile), insuficient pentru o validare de peste un an. Aceeasi
+    conventie ca in tools/funding_edge.py - executia e pe BingX, dar semnalul
+    de funding (fenomenul de piata, nu numarul exact) se citeste de la
+    Binance, locul dominant. Verificat: 49 din 50 de simboluri din universul
+    curent exista pe Binance futures.
+
+    Simbolurile fara istoric pe Binance sunt omise, nu inlocuite cu zero - un
+    cost inventat ar deforma exact costul pe care incercam sa il masuram
+    corect. Apelantul e cel care decide ce inseamna acoperirea incompleta.
+    """
+    import ccxt
+
+    os.makedirs(FUNDING_CACHE_DIR, exist_ok=True)
+    fresh_after = time.time() - cache_hours * 3600.0
+
+    ex = ccxt.binance({"options": {"defaultType": "future"}})
+    ex.load_markets()
+
+    out: dict[str, pd.DataFrame] = {}
+    for i, sym in enumerate(symbols, 1):
+        path = _funding_cache_path(sym)
+        df = None
+        if os.path.exists(path) and os.path.getmtime(path) > fresh_after:
+            try:
+                df = pd.read_pickle(path)
+            except Exception:  # noqa: BLE001
+                df = None
+
+        if df is None:
+            if sym not in ex.symbols:
+                log.warning("  %s: nu exista pe Binance futures, sarim", sym)
+                continue
+            rows: list[dict] = []
+            since = ex.milliseconds() - days * 24 * 3600 * 1000
+            cursor = since
+            for _ in range(200):
+                try:
+                    batch = ex.fetch_funding_rate_history(sym, since=cursor, limit=1000)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("  %s: fara istoric funding (%s)", sym, str(exc)[:80])
+                    batch = []
+                if not batch:
+                    break
+                rows.extend(batch)
+                last = batch[-1]["timestamp"]
+                if last <= cursor or len(batch) < 2:
+                    break
+                cursor = last + 1
+                if last > ex.milliseconds() - 8 * 3600 * 1000:
+                    break
+            if not rows:
+                continue
+            df = (
+                pd.DataFrame(
+                    [{"timestamp": r["timestamp"], "funding": r["fundingRate"]} for r in rows]
+                )
+                .drop_duplicates("timestamp")
+                .sort_values("timestamp")
+            )
+            df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+            df.to_pickle(path)
+
+        out[sym] = df
+        print(f"  [{i}/{len(symbols)}] {sym:<20} {len(df)} decontari de funding")
+    return out
+
+
+def align_funding_to_bars(
+    funding: dict[str, pd.DataFrame], bar_index: pd.DatetimeIndex
+) -> pd.DataFrame:
+    """
+    Rata de funding aplicabila la fiecare bara: suma decontarilor petrecute in
+    intervalul (bara anterioara, bara curenta].
+
+    Nu presupune ca decontarile cad exact pe granita unei bare - la 1d, de
+    exemplu, o singura bara acopera toate cele trei decontari din acea zi, si
+    trebuie insumate, nu alese una singura. La 4h/1h, de obicei e o singura
+    decontare sau deloc.
+    """
+    # Bara etichetata cu timestamp T acopera intervalul [T, T + pas). O
+    # decontare la exact T apartine barei T, nu celei anterioare, si o decontare
+    # de dupa ULTIMA bara nu apartine nimanui - fara o margine superioara
+    # explicita, searchsorted ar varsa orice decontare tarzie in ultima bara.
+    #
+    # NU pd.cut: cu bin-uri DatetimeIndex si tz-aware, pd.cut ramane agatat pe
+    # aceasta versiune de pandas (reprodus separat, fara iesire dupa >30s pe un
+    # exemplu de 6 elemente). searchsorted face exact acelasi lucru, direct pe
+    # int64, si e oricum mai rapid pentru cateva zeci de mii de decontari.
+    n = len(bar_index)
+    step = bar_index[-1] - bar_index[-2] if n > 1 else pd.Timedelta(hours=8)
+    edges = bar_index.append(pd.DatetimeIndex([bar_index[-1] + step]))
+
+    cols = {}
+    for sym, df in funding.items():
+        idx = edges.searchsorted(pd.DatetimeIndex(df["datetime"]), side="right") - 1
+        valid = (idx >= 0) & (idx < n)
+        s = pd.Series(0.0, index=bar_index)
+        if valid.any():
+            grouped = pd.Series(df["funding"].values[valid]).groupby(idx[valid]).sum()
+            s.iloc[grouped.index.to_numpy()] = grouped.to_numpy()
+        cols[sym] = s
+    return pd.DataFrame(cols)
+
+
 # -------------------------------------------------------------------- features
 def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     """
