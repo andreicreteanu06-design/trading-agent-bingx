@@ -15,7 +15,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Layers, Wallet } from "lucide-react";
+import { Layers, Wallet, X } from "lucide-react";
+import { motion } from "framer-motion";
 
 import {
   Empty,
@@ -30,6 +31,7 @@ import {
   SectionHead,
   api,
 } from "@/components/agent-dashboard";
+import { CandlestickChart, type Candle } from "@/components/ui/candlestick-chart";
 import { cn } from "@/lib/utils";
 
 type PaperPosition = {
@@ -70,15 +72,58 @@ type PaperBook = {
   last_run?: PaperLastRun | null;
 };
 
+type SymbolDetail = {
+  symbol: string;
+  tf: string;
+  candles: Candle[];
+  range_pos: number | null;
+  vol_24: number | null;
+};
+
 /** simbolul scurt, fara perechea de cotatie - mai usor de citit intr-un tabel dens */
 function shortSymbol(sym: string) {
   return sym.split("/")[0] ?? sym;
+}
+
+/** unde sta moneda in intervalul propriu de 72 de lumanari - explica direct de ce e long/short */
+function rangePosRead(v: number): { text: string; tone: "long" | "short" | "mid" } {
+  if (v >= 0.7) return { text: "aproape de maximul ultimelor 72 de lumanari", tone: "long" };
+  if (v <= 0.3) return { text: "aproape de minimul ultimelor 72 de lumanari", tone: "short" };
+  return { text: "in mijlocul intervalului ultimelor 72 de lumanari", tone: "mid" };
 }
 
 export function PaperBookSection() {
   const [book, setBook] = useState<PaperBook | null>(null);
   const [connected, setConnected] = useState(false);
   const alive = useRef(true);
+
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SymbolDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const selectSymbol = useCallback(async (sym: string) => {
+    // al doilea click pe acelasi rand inchide panoul, ca un disclosure normal
+    if (selected === sym) {
+      setSelected(null);
+      setDetail(null);
+      return;
+    }
+    setSelected(sym);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      const data = await api<SymbolDetail>(
+        `/api/paper/detail?symbol=${encodeURIComponent(sym)}`,
+      );
+      setDetail(data);
+    } catch {
+      setDetailError("Nu am putut aduce graficul - simbolul poate sa fi disparut din univers.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [selected]);
 
   const load = useCallback(async () => {
     try {
@@ -204,7 +249,7 @@ export function PaperBookSection() {
             title="Pozitii"
             meta={
               book.positions?.length
-                ? `${book.positions.length} pozitii deschise`
+                ? `${book.positions.length} pozitii deschise · click pe un rand pentru grafic`
                 : undefined
             }
           />
@@ -228,35 +273,158 @@ export function PaperBookSection() {
                       </td>
                     </tr>
                   )}
-                  {book.positions?.map((p) => (
-                    <tr key={p.symbol} className="border-b border-line last:border-0">
-                      <td className="px-4 py-3 font-mono text-hi">
-                        {shortSymbol(p.symbol)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={cn(
-                            "rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.12em]",
-                            p.side === "long"
-                              ? "border-long/30 text-long"
-                              : "border-short/30 text-short",
-                          )}
-                        >
-                          {p.side}
-                        </span>
-                      </td>
-                      <td className="num px-4 py-3 font-mono tabular-nums text-hi">
-                        {fmt(p.notional_usdt)} USDT
-                      </td>
-                      <td className="num px-4 py-3 font-mono tabular-nums text-mid">
-                        {fmtPrice(p.mark_price)}
-                      </td>
-                    </tr>
-                  ))}
+                  {book.positions?.map((p) => {
+                    const on = selected === p.symbol;
+                    return (
+                      <tr
+                        key={p.symbol}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={on}
+                        onClick={() => void selectSymbol(p.symbol)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            void selectSymbol(p.symbol);
+                          }
+                        }}
+                        className={cn(
+                          "cursor-pointer border-b border-line outline-none last:border-0",
+                          "transition-colors hover:bg-raised focus-visible:bg-raised",
+                          on && "bg-raised",
+                        )}
+                      >
+                        <td className="px-4 py-3 font-mono text-hi">
+                          {shortSymbol(p.symbol)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={cn(
+                              "rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.12em]",
+                              p.side === "long"
+                                ? "border-long/30 text-long"
+                                : "border-short/30 text-short",
+                            )}
+                          >
+                            {p.side}
+                          </span>
+                        </td>
+                        <td className="num px-4 py-3 font-mono tabular-nums text-hi">
+                          {fmt(p.notional_usdt)} USDT
+                        </td>
+                        <td className="num px-4 py-3 font-mono tabular-nums text-mid">
+                          {fmtPrice(p.mark_price)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </Panel>
+
+          {selected && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+              className="mt-3"
+            >
+              <Panel className="overflow-hidden">
+                <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5">
+                  <Label>{shortSymbol(selected)} · grafic</Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelected(null);
+                      setDetail(null);
+                    }}
+                    className="rounded-full p-1.5 text-lo transition-colors hover:bg-raised hover:text-hi"
+                    aria-label="Inchide graficul"
+                  >
+                    <X strokeWidth={1.5} className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="p-4 sm:p-5">
+                  {detailLoading && (
+                    <p className="py-8 text-center text-[13px] text-mid">
+                      Aduc lumanarile...
+                    </p>
+                  )}
+                  {detailError && (
+                    <p className="py-8 text-center text-[13px] text-short">{detailError}</p>
+                  )}
+                  {detail && !detailLoading && !detailError && (
+                    <>
+                      <CandlestickChart
+                        candles={detail.candles}
+                        referencePrice={
+                          book.positions?.find((p) => p.symbol === selected)?.mark_price
+                        }
+                        referenceLabel={`pret de referinta pozitie (${detail.tf})`}
+                      />
+
+                      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+                        {(() => {
+                          const pos = book.positions?.find((p) => p.symbol === selected);
+                          const sameSide = (book.positions ?? []).filter(
+                            (p) => p.side === pos?.side,
+                          );
+                          const rank = sameSide.findIndex((p) => p.symbol === selected) + 1;
+                          const rp = detail.range_pos;
+                          const read = rp == null ? null : rangePosRead(rp);
+                          return (
+                            <>
+                              <Readout
+                                label="Rang in carte"
+                                value={
+                                  pos && rank > 0
+                                    ? `#${rank} din ${sameSide.length} ${pos.side}`
+                                    : NIL
+                                }
+                              />
+                              <Readout
+                                label="range_pos"
+                                value={rp == null ? NIL : `${fmt(rp * 100, 0)}%`}
+                                tone={read?.tone ?? "hi"}
+                              />
+                              <Readout
+                                label="Volatilitate (24 bare)"
+                                value={
+                                  detail.vol_24 == null
+                                    ? NIL
+                                    : `${fmt(detail.vol_24 * 100, 2)}%`
+                                }
+                              />
+                              <Readout
+                                label="Expunere in carte"
+                                value={pos ? `${fmt(pos.notional_usdt)} USDT` : NIL}
+                                tone={pos?.side === "long" ? "long" : "short"}
+                              />
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      {detail.range_pos != null && (
+                        <p className="mt-3 text-[13px] leading-relaxed text-mid">
+                          {shortSymbol(selected)} e {rangePosRead(detail.range_pos).text}.
+                          Factorul range_pos merge long pe monedele aproape de maxim si
+                          short pe cele aproape de minim - de aceea sta{" "}
+                          {book.positions?.find((p) => p.symbol === selected)?.side ===
+                          "long"
+                            ? "long"
+                            : "short"}{" "}
+                          in cartea curenta.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </Panel>
+            </motion.div>
+          )}
 
           {book.last_run && (
             <div className="mt-4 flex items-start gap-3 rounded-cell border border-line bg-raised p-3.5">

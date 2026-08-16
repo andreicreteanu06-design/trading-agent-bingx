@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import socket
 import sys
@@ -26,13 +27,14 @@ import time
 import webbrowser
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
 from core.scanner import Scanner, read_signal_history
 from execution.paper_executor import load_last_ledger_entry, load_state as load_paper_state
+from tools.edge_scan import compute_features
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s", datefmt="%H:%M:%S"
@@ -228,6 +230,22 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, _paper_book())
             return
 
+        if path == "/api/paper/detail":
+            qs = parse_qs(urlparse(self.path).query)
+            symbol = (qs.get("symbol") or [""])[0]
+            if not symbol:
+                self._json(400, {"error": "lipseste parametrul symbol"})
+                return
+            tf = (qs.get("tf") or ["4h"])[0]
+            try:
+                self._json(200, _symbol_detail(symbol, tf, 120))
+            except Exception as exc:  # noqa: BLE001
+                # Un simbol delistat intre timp sau o retea care pica nu are
+                # voie sa darame consola - doar sectiunea de detaliu ramane goala.
+                log.warning("Detaliu esuat pentru %s: %s", symbol, exc)
+                self._json(502, {"error": str(exc)})
+            return
+
         self._json(404, {"error": "not found"})
 
     # ------------------------------------------------------------------ POST
@@ -352,6 +370,45 @@ def _paper_book() -> dict:
         "gross_exposure_usdt": sum(p["notional_usdt"] for p in positions),
         "positions": positions,
         "last_run": load_last_ledger_entry(),
+    }
+
+
+def _symbol_detail(symbol: str, tf: str, limit: int) -> dict:
+    """
+    Lumanari recente plus valoarea RAW a factorului range_pos pentru un singur
+    simbol - fara sa aduca tot universul.
+
+    range_pos = (close - minim72) / (maxim72 - minim72) se calculeaza doar din
+    istoricul propriu al monedei (tools/edge_scan.py::compute_features), deci
+    nu are nevoie de sectiunea transversala. Rangul EXACT fata de celelalte
+    monede ar cere tot universul (minute, nu "pe loc") - de aceea dashboard-ul
+    arata rangul in cartea curenta (deja incarcata) langa aceasta valoare, nu
+    un rang recalculat aici.
+    """
+    df = SERVICE.scanner.client.fetch_ohlcv(symbol, tf, limit)
+    feats = compute_features(df)
+    last = feats.iloc[-1]
+
+    def _clean(v: float) -> float | None:
+        return None if math.isnan(v) else float(v)
+
+    candles = [
+        {
+            "ts": int(row.timestamp),
+            "open": float(row.open),
+            "high": float(row.high),
+            "low": float(row.low),
+            "close": float(row.close),
+        }
+        for row in df.itertuples()
+    ]
+
+    return {
+        "symbol": symbol,
+        "tf": tf,
+        "candles": candles,
+        "range_pos": _clean(last["range_pos"]),
+        "vol_24": _clean(last["vol_24"]),
     }
 
 
