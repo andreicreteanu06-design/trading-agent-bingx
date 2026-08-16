@@ -51,6 +51,7 @@ $LogDir = Join-Path $ScriptDir "logs"
 $PythonLog = Join-Path $LogDir "python-api.log"
 $NextLog   = Join-Path $LogDir "nextjs.log"
 $OiLoggerLog = Join-Path $LogDir "oi-logger.log"
+$LiqLoggerLog = Join-Path $LogDir "liq-logger.log"
 $LauncherLog = Join-Path $LogDir "launcher.log"
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -126,6 +127,7 @@ Write-Log "Python: ${ApiHost}:$PythonPort | Next.js: ${NextHost}:$NextPort"
 $pythonProc = $null
 $nextProc   = $null
 $oiLoggerProc = $null
+$liqLoggerProc = $null
 $running = $true
 
 # ---- Clean shutdown ----
@@ -138,7 +140,7 @@ $running = $true
 # without needing to hook console events at all.
 function Stop-Children {
     Write-Log "Stopping child processes..."
-    foreach ($p in @($pythonProc, $nextProc, $oiLoggerProc)) {
+    foreach ($p in @($pythonProc, $nextProc, $oiLoggerProc, $liqLoggerProc)) {
         if ($p -and -not $p.HasExited) {
             try { $p.Kill() } catch { }
         }
@@ -172,6 +174,18 @@ while ($running) {
         $oiLoggerProc = Start-ProcessWithLogging -Name "OiLogger" `
             -Exe "python" -ArgLine "tools\oi_logger.py --loop" `
             -WorkingDir $ScriptDir -LogFile $OiLoggerLog
+    }
+
+    # --- Forced-liquidation logger ---
+    # Same reasoning as the OI logger: liquidation history cannot be bought,
+    # only recorded, so it has to survive reboots without anyone remembering it.
+    # This one holds a WebSocket open rather than polling, so a dropped process
+    # is a hard gap in the stream — the 10s liveness check matters more here.
+    if (-not $liqLoggerProc -or $liqLoggerProc.HasExited) {
+        Write-Log "Starting liquidation logger..."
+        $liqLoggerProc = Start-ProcessWithLogging -Name "LiqLogger" `
+            -Exe "python" -ArgLine "tools\liq_logger.py" `
+            -WorkingDir $ScriptDir -LogFile $LiqLoggerLog
     }
 
     # Wait a bit before checking again

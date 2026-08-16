@@ -49,6 +49,16 @@ class ManagedPosition:
         return self.fraction_closed < 0.9999
 
 
+# Fractiunea inchisa la TP1, intr-un singur loc.
+#
+# A fost 0.0 aici in timp ce backtest/engine.py avea 0.5 scris de mana in patru
+# locuri. Backtestul raporta deci o strategie care ia profit partial, iar
+# managerul live nu inchidea nimic la TP1 - doua comportamente diferite sub
+# acelasi nume, si un backtest care nu descria ce s-ar fi intamplat cu bani
+# reali. Testul "jumatate inchisa" prindea divergenta si pica de atunci.
+TP1_CLOSE_FRACTION = 0.5
+
+
 @dataclass
 class ManagementConfig:
     # Multiplicatorul ATR pentru trailing, dupa activare.
@@ -56,11 +66,21 @@ class ManagementConfig:
     # Trailing-ul se activeaza doar dupa ce pretul a atins acest multiplu de R.
     trail_activate_r: float = 0.5
     # Fractiunea inchisa la TP1.
-    tp1_close_fraction: float = 0.0
+    tp1_close_fraction: float = TP1_CLOSE_FRACTION
     # Costul dus-intors, folosit ca buffer peste breakeven.
     roundtrip_cost: float = 0.002  # 0.2% - acopera fee + slippage cu marja
     # Iesire fortata dupa atatea lumanari fara rezolutie.
     max_bars_in_trade: int = 48
+
+    def __post_init__(self) -> None:
+        # O fractiune de 0 face ca TP1 sa nu inchida nimic, iar detectarea "am
+        # luat deja TP1" din backtest sa nu se mai declanseze niciodata. Esueaza
+        # zgomotos, nu tacut.
+        if not 0.0 < self.tp1_close_fraction < 1.0:
+            raise ValueError(
+                f"tp1_close_fraction trebuie strict intre 0 si 1, "
+                f"nu {self.tp1_close_fraction}"
+            )
 
 
 class TradeManager:

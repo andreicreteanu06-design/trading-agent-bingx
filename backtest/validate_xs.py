@@ -200,6 +200,35 @@ def build_weights(
     return w / total
 
 
+VOL_LOOKBACK = 120
+MAX_LEVERAGE = 3.0
+MIN_LEVERAGE = 0.25
+
+
+def leverage_for(
+    rets: pd.DataFrame, w: pd.Series, i: int, target_per_bar: float
+) -> float:
+    """
+    Cat sa scalezi cartea ca volatilitatea ei sa fie aproape de tinta.
+
+    Volatilitatea se estimeaza ruland ponderile de ACUM peste randamentele
+    TRECUTE - fereastra se opreste la `i`, exclusiv, deci nu exista privire in
+    viitor. Cu expunere bruta fixa, riscul cartii urca si coboara odata cu piata;
+    tinta il tine constant, ceea ce de obicei conteaza mai mult pentru Sharpe
+    decat semnalul insusi.
+    """
+    lo = max(0, i - VOL_LOOKBACK)
+    hist = rets.iloc[lo:i]
+    if len(hist) < VOL_LOOKBACK // 2:
+        return 1.0
+
+    port = hist.reindex(columns=w.index).fillna(0.0).mul(w, axis=1).sum(axis=1)
+    sd = float(port.std())
+    if not np.isfinite(sd) or sd <= 0:
+        return 1.0
+    return float(np.clip(target_per_bar / sd, MIN_LEVERAGE, MAX_LEVERAGE))
+
+
 def simulate(
     closes: pd.DataFrame,
     signal: pd.DataFrame,
@@ -209,12 +238,15 @@ def simulate(
     cost_per_side: float,
     start: int,
     end: int,
+    vol_target: float = 0.0,
 ) -> pd.Series:
     """
     Randamentele nete ale cartii intre barele [start, end).
 
     Semnalul la bara i foloseste doar informatie pana la i inclusiv; cartea
     construita atunci castiga randamentul barei i+1 incolo.
+
+    `vol_target` e volatilitatea tinta PE BARA (0 = expunere bruta fixa).
     """
     rets = closes.pct_change()
     w = pd.Series(dtype=float)
@@ -239,6 +271,10 @@ def simulate(
         if (i - start) % hold == 0:
             new_w = build_weights(signal.iloc[i], vols.iloc[i], vol_scale)
             if not new_w.empty:
+                if vol_target > 0:
+                    # Scalarea se aplica INAINTE de turnover: schimbarea de
+                    # levier se tranzactioneaza, deci trebuie sa coste.
+                    new_w = new_w * leverage_for(rets, new_w, i, vol_target)
                 idx = w.index.union(new_w.index)
                 turnover = float(
                     (new_w.reindex(idx).fillna(0.0) - w.reindex(idx).fillna(0.0))
@@ -278,6 +314,8 @@ def main() -> int:
     p.add_argument("--bars", type=int, default=3000)
     p.add_argument("--factor", default="range_pos")
     p.add_argument("--folds", type=int, default=5)
+    p.add_argument("--vol-target", type=float, default=0.0,
+                   help="volatilitate anualizata tinta a cartii (0 = expunere fixa)")
     p.add_argument("--hedge-regime", action="store_true",
                    help="neutralizeaza beta pe (altcoins - BTC)")
     args = p.parse_args()
@@ -286,6 +324,7 @@ def main() -> int:
 
     bpy = 365.0 * 24.0 / {"1h": 1, "2h": 2, "4h": 4, "1d": 24}.get(args.tf, 4)
     cost = CONFIG.taker_fee + CONFIG.slippage
+    vt = args.vol_target / np.sqrt(bpy) if args.vol_target > 0 else 0.0
 
     client = BingXClient()
     print()
@@ -325,6 +364,9 @@ def main() -> int:
           f"(hold x sizing invers volatilitatii)")
     if args.hedge_regime:
         print("  hedge pe regim: DA (beta estimata doar pe antrenament)")
+    if vt > 0:
+        print(f"  tinta de volatilitate: {args.vol_target:.0%} pe an "
+              f"(levier intre {MIN_LEVERAGE:g}x si {MAX_LEVERAGE:g}x)")
     print()
     print(f"  {'fold':<6}{'perioada':<26}{'config ales':<16}"
           f"{'OOS anual':>11}{'Sharpe':>8}")
@@ -340,7 +382,7 @@ def main() -> int:
         # --- alegerea configuratiei, exclusiv pe date de antrenament ---
         best, best_sh = None, -1e9
         for hold, vs in grid:
-            r = simulate(closes, sig, vols, hold, vs, cost, 200, is_end)
+            r = simulate(closes, sig, vols, hold, vs, cost, 200, is_end, vt)
             if args.hedge_regime:
                 g = regime.reindex(r.index).fillna(0.0)
                 if g.std() > 0:
@@ -356,13 +398,13 @@ def main() -> int:
         # test. Reestimarea pe test ar fi privire in viitor.
         beta_is = 0.0
         if args.hedge_regime:
-            r_is = simulate(closes, sig, vols, hold, vs, cost, 200, is_end)
+            r_is = simulate(closes, sig, vols, hold, vs, cost, 200, is_end, vt)
             g_is = regime.reindex(r_is.index).fillna(0.0)
             if g_is.std() > 0:
                 beta_is = float(np.polyfit(g_is, r_is, 1)[0])
 
         # --- masurarea, exclusiv pe date nevazute ---
-        r_oos = simulate(closes, sig, vols, hold, vs, cost, is_end, oos_end)
+        r_oos = simulate(closes, sig, vols, hold, vs, cost, is_end, oos_end, vt)
         if args.hedge_regime:
             r_oos = hedge(r_oos, regime, beta_is)
 
@@ -383,6 +425,19 @@ def main() -> int:
         return 1
 
     stitched = pd.concat(oos_all)
+
+    # Seria OOS pe disc: fara ea nu se poate masura corelatia cu alte carti,
+    # iar corelatia e singurul lucru care decide daca doua strategii se aduna
+    # sau doar se dilueaza una pe alta.
+    # Numele contine configuratia din acelasi motiv ca la certificat: fara ea,
+    # o rulare cu tinta de volatilitate suprascrie seria celei fara, si comparatia
+    # dintre ele devine imposibila exact cand ai nevoie de ea.
+    suffix = f"_vt{round(args.vol_target * 100)}" if args.vol_target > 0 else ""
+    rets_path = f"logs/xs_returns_{args.factor}{suffix}.csv"
+    os.makedirs("logs", exist_ok=True)
+    stitched.rename("ret").to_csv(rets_path, index_label="datetime")
+    print(f"\n  Randamente OOS scrise in {rets_path}")
+
     ann = annualized(stitched, bpy)
     sh = sharpe(stitched, bpy)
     t = float(nw_t_stat(stitched, lag=42))
@@ -432,7 +487,7 @@ def main() -> int:
         xs_gate.XSCertificate(
             passed=passed,
             fingerprint=xs_gate.fingerprint(
-                args.factor, args.tf, args.universe, tuple(grid)
+                args.factor, args.tf, args.universe, tuple(grid), args.vol_target
             ),
             created_at=pd.Timestamp.now("UTC").isoformat(),
             factor=args.factor,
@@ -449,7 +504,7 @@ def main() -> int:
             period_end=str(stitched.index[-1]),
             notes=[lbl for lbl, ok in checks if not ok],
         ),
-        path=xs_gate.path_for(args.factor),
+        path=xs_gate.path_for(args.factor, args.vol_target),
     )
 
     print()

@@ -1,10 +1,11 @@
 """
-Inregistreaza open interest, funding si pret. Datele care lipsesc azi nu se mai
-pot recupera niciodata.
+Inregistreaza open interest, funding, pret si adancimea cartii de ordine.
+Datele care lipsesc azi nu se mai pot recupera niciodata.
 
     python tools\\oi_logger.py                 # o singura citire, apoi iese
     python tools\\oi_logger.py --loop          # ruleaza continuu, la fiecare ora
     python tools\\oi_logger.py --stats         # ce s-a adunat pana acum
+    python tools\\oi_logger.py --universe 60   # cate simboluri sa urmareasca
 
 Nu are nevoie de chei API.
 
@@ -23,11 +24,26 @@ inceput sa inregistrezi.
 
 De asta acest fisier ar fi trebuit scris in prima zi a proiectului.
 
+DE CE UNIVERSUL LARG, NU BTC/ETH/SOL
+
+Prima versiune loga cele trei simboluri din config - exact cele pe care s-a
+demonstrat ca nu exista edge, fiindca se misca aproape identic. Singura structura
+statistica gasita in proiect e cross-sectionala (ordonarea a ~40 de altcoins
+intre ele), deci acolo trebuie sa se adune si datele de pozitionare. Un OI logat
+pe trei monede corelate nu poate raspunde niciodata la o intrebare
+cross-sectionala.
+
 CE INREGISTREAZA, la fiecare ora, pentru fiecare simbol:
   - open interest de la BingX (locul unde tranzactionezi)
   - open interest de la Binance (piata dominanta, pentru context)
   - funding rate curent
   - pretul mark
+  - adancimea cartii de ordine: cat notional USDT sta in asteptare la +-0.1% si
+    +-0.5% de mid, plus spread-ul
+
+Adancimea raspunde la intrebarea de capacitate - cati bani poate absorbi
+strategia inainte ca slippage-ul sa manance randamentul - si nu e disponibila
+istoric la nicio sursa publica.
 
 FORMAT: JSONL, o linie per citire per simbol. Se adauga la sfarsit, nu se
 rescrie niciodata nimic - un fisier care doar creste nu poate pierde date
@@ -67,6 +83,44 @@ def _safe(fn, default=None):
         return default
 
 
+def resolve_universe(size: int) -> list[str]:
+    """Cele mai lichide `size` perpetuals, acelasi filtru ca la cercetare."""
+    from exchange.bingx_client import BingXClient
+    from tools.edge_scan import pick_universe
+
+    return pick_universe(BingXClient(), size)
+
+
+def book_depth(ob: dict | None) -> dict:
+    """
+    Notionalul USDT care asteapta in carte in jurul pretului mid.
+
+    `levels` si `span_bps` sunt inregistrate pentru ca adancimea la 50bps e
+    subestimata cand bursa returneaza o carte prea scurta ca sa acopere banda.
+    Fara ele nu se poate distinge "piata subtire" de "raspuns trunchiat".
+    """
+    bids = (ob or {}).get("bids") or []
+    asks = (ob or {}).get("asks") or []
+    if not bids or not asks:
+        return {}
+
+    best_bid, best_ask = float(bids[0][0]), float(asks[0][0])
+    mid = (best_bid + best_ask) / 2
+    if mid <= 0:
+        return {}
+
+    out: dict[str, float] = {
+        "spread_bps": (best_ask - best_bid) / mid * 1e4,
+        "book_levels": len(bids) + len(asks),
+        "book_span_bps": min(mid - float(bids[-1][0]), float(asks[-1][0]) - mid) / mid * 1e4,
+    }
+    for tag, band in (("10bps", 0.001), ("50bps", 0.005)):
+        lo, hi = mid * (1 - band), mid * (1 + band)
+        out[f"bid_usdt_{tag}"] = sum(float(p) * float(q) for p, q in bids if float(p) >= lo)
+        out[f"ask_usdt_{tag}"] = sum(float(p) * float(q) for p, q in asks if float(p) <= hi)
+    return out
+
+
 def snapshot(symbols: list[str]) -> list[dict]:
     """O citire completa pentru toate simbolurile."""
     bingx = ccxt.bingx({"options": {"defaultType": "swap"}})
@@ -74,16 +128,23 @@ def snapshot(symbols: list[str]) -> list[dict]:
     _safe(bingx.load_markets)
     _safe(binance.load_markets)
 
+    # Pretul si funding-ul vin grupat intr-o singura cerere fiecare. Pe 40 de
+    # simboluri asta scade citirea de la ~160 de apeluri la ~120.
+    tickers = _safe(lambda: bingx.fetch_tickers(symbols), {}) or {}
+    fundings = _safe(lambda: bingx.fetch_funding_rates(symbols), {}) or {}
+
     now = datetime.now(timezone.utc)
     rows = []
 
     for symbol in symbols:
         bx_oi = _safe(lambda s=symbol: bingx.fetch_open_interest(s))
         bn_oi = _safe(lambda s=symbol: binance.fetch_open_interest(s))
-        funding = _safe(lambda s=symbol: bingx.fetch_funding_rate(s))
-        ticker = _safe(lambda s=symbol: bingx.fetch_ticker(s))
+        # 500 de nivele: pe BTC cartea la 100 se intinde doar ~8bps, deci banda
+        # de 50bps ar iesi trunchiata si identica cu cea de 10bps.
+        book = _safe(lambda s=symbol: bingx.fetch_order_book(s, limit=500))
 
-        price = (ticker or {}).get("last")
+        funding = fundings.get(symbol)
+        price = (tickers.get(symbol) or {}).get("last")
 
         # Normalizare, altfel datele nu vor fi comparabile peste sase luni:
         # BingX raporteaza open interest in USDT (`value`) si nu da `amount`,
@@ -112,13 +173,15 @@ def snapshot(symbols: list[str]) -> list[dict]:
             "funding": (funding or {}).get("fundingRate"),
             "next_funding": (funding or {}).get("fundingTimestamp"),
             "price": price,
+            **book_depth(book),
         }
         rows.append(row)
 
         have = sum(1 for k in ("bingx_oi_value", "binance_oi_value", "funding", "price")
                    if row[k] is not None)
-        log.info("  %-18s %d/4 campuri  pret=%s  funding=%s",
-                 symbol, have, row["price"], row["funding"])
+        log.info("  %-18s %d/4 campuri  pret=%-12s adancime@10bps=%s",
+                 symbol, have, row["price"],
+                 f"{row.get('bid_usdt_10bps', 0):,.0f}" if "bid_usdt_10bps" in row else "-")
 
     return rows
 
@@ -156,13 +219,19 @@ def show_stats(path: str = DEFAULT_PATH) -> int:
           f"{df['datetime'].max():%Y-%m-%d %H:%M} UTC")
     print(f"  Acoperire    : {span_h/24:.1f} zile")
     print()
-    print(f"  {'simbol':<20} {'obs':>6} {'OI BingX':>8} {'OI Binance':>11} {'funding':>8}")
-    print("  " + "-" * 60)
+    print(f"  Simboluri    : {df['symbol'].nunique()}")
+    print()
+    print(f"  {'simbol':<20} {'obs':>5} {'OI BgX':>7} {'OI Bnc':>7} {'fund':>6} "
+          f"{'spread':>8} {'adanc@10bps':>13}")
+    print("  " + "-" * 72)
     for sym, sub in df.groupby("symbol"):
-        print(f"  {sym:<20} {len(sub):>6} "
-              f"{sub['bingx_oi_value'].notna().sum():>8} "
-              f"{sub['binance_oi_value'].notna().sum():>11} "
-              f"{sub['funding'].notna().sum():>8}")
+        spread = sub["spread_bps"].mean() if "spread_bps" in sub else float("nan")
+        depth = sub["bid_usdt_10bps"].mean() if "bid_usdt_10bps" in sub else float("nan")
+        print(f"  {sym:<20} {len(sub):>5} "
+              f"{sub['bingx_oi_value'].notna().sum():>7} "
+              f"{sub['binance_oi_value'].notna().sum():>7} "
+              f"{sub['funding'].notna().sum():>6} "
+              f"{spread:>7.2f}b {depth:>13,.0f}")
 
     print()
     need = 180 * 24 / max(len(df) / max(span_h, 1), 1) if span_h > 0 else 0
@@ -179,6 +248,8 @@ def show_stats(path: str = DEFAULT_PATH) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description="Logger de open interest si funding")
     p.add_argument("--symbol", action="append")
+    p.add_argument("--universe", type=int, default=40,
+                   help="cate simboluri lichide sa urmareasca (0 = cele din config)")
     p.add_argument("--loop", action="store_true", help="ruleaza continuu")
     p.add_argument("--interval", type=int, default=3600, help="secunde intre citiri")
     p.add_argument("--path", default=DEFAULT_PATH)
@@ -188,7 +259,17 @@ def main() -> int:
     if args.stats:
         return show_stats(args.path)
 
-    symbols = args.symbol or list(C.market.symbols)
+    if args.symbol:
+        symbols = args.symbol
+    elif args.universe > 0:
+        # Universul se fixeaza o data la pornire. Daca s-ar recalcula la fiecare
+        # citire, panelul ar deveni zimtat si seriile n-ar mai fi comparabile.
+        symbols = _safe(lambda: resolve_universe(args.universe), [])
+        if not symbols:
+            log.error("Nu am putut alege universul; folosesc simbolurile din config.")
+            symbols = list(C.market.symbols)
+    else:
+        symbols = list(C.market.symbols)
 
     if not args.loop:
         log.info("Citire unica pentru %d simboluri...", len(symbols))

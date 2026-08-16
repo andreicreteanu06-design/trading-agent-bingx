@@ -269,23 +269,86 @@ class BingXClient:
         params = {"side": "LONG" if side == "long" else "SHORT"}
         self._exchange.set_leverage(int(leverage), symbol, params)
 
+    def normalize_amount(
+        self,
+        symbol: str,
+        amount: float,
+        price: float | None = None,
+        closing: bool = False,
+    ) -> float:
+        """
+        Rotunjeste cantitatea la precizia pietei si verifica minimele bursei.
+
+        Fiecare contract are alta precizie si alt minim - masurat pe BingX:
+        BTC accepta 0.0001, SOL cere minim 0.03, HOLO cere 34.29 unitati, iar
+        costul minim e 2 USDT peste tot. O cantitate brută trimisa asa cum a
+        calculat-o sizerul e respinsa de bursa sau, mai rau, rotunjita tacut de
+        ea in altceva decat riscul pe care l-ai dimensionat.
+
+        `closing=True` sare peste verificarea minimelor: un ordin care INCHIDE o
+        pozitie nu are voie sa fie blocat de o limita de marime. Daca minimele
+        s-au schimbat de la deschidere, alternativa la un stop prea mic nu e un
+        stop respins, ci o pozitie ramasa fara protectie.
+        """
+        self.load_markets()
+        try:
+            qty = float(self._exchange.amount_to_precision(symbol, amount))
+        except Exception as exc:  # noqa: BLE001
+            # ccxt arunca InvalidOrder cand cantitatea e sub un pas de precizie.
+            # E aceeasi problema ca minimele de mai jos, deci merita acelasi tip
+            # de eroare - altfel apelantul trebuie sa prinda doua exceptii pentru
+            # un singur motiv.
+            raise ValueError(f"{symbol}: cantitate {amount} invalida - {exc}") from exc
+
+        if closing:
+            return qty
+
+        limits = self.market(symbol).get("limits") or {}
+        min_amount = (limits.get("amount") or {}).get("min")
+        min_cost = (limits.get("cost") or {}).get("min")
+
+        if qty <= 0:
+            raise ValueError(
+                f"{symbol}: cantitatea {amount} se rotunjeste la zero la precizia pietei"
+            )
+        if min_amount is not None and qty < float(min_amount):
+            raise ValueError(
+                f"{symbol}: cantitate {qty} sub minimul bursei {min_amount}"
+            )
+        if min_cost is not None and price is not None and qty * price < float(min_cost):
+            raise ValueError(
+                f"{symbol}: notional {qty * price:.2f} USDT sub minimul "
+                f"bursei {min_cost} USDT"
+            )
+        return qty
+
     def create_market_order(
-        self, symbol: str, side: str, amount: float, params: dict[str, Any] | None = None
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        params: dict[str, Any] | None = None,
+        price: float | None = None,
+        closing: bool = False,
     ) -> dict[str, Any]:
+        """`price` e folosit doar ca sa verifice notionalul minim, nu ca limita."""
+        qty = self.normalize_amount(symbol, amount, price, closing)
         order_side = "buy" if side == "long" else "sell"
         return self._exchange.create_order(
-            symbol, "market", order_side, amount, None, params or {}
+            symbol, "market", order_side, qty, None, params or {}
         )
 
     def create_stop_loss(
         self, symbol: str, side: str, amount: float, stop_price: float
     ) -> dict[str, Any]:
+        qty = self.normalize_amount(symbol, amount, closing=True)
+        stop = float(self._exchange.price_to_precision(symbol, stop_price))
         close_side = "sell" if side == "long" else "buy"
         return self._exchange.create_order(
             symbol,
             "stop_market",
             close_side,
-            amount,
+            qty,
             None,
-            {"stopPrice": stop_price, "reduceOnly": True},
+            {"stopPrice": stop, "reduceOnly": True},
         )

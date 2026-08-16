@@ -29,6 +29,7 @@ from typing import Any
 import pandas as pd
 
 from strategy import signal_builder
+from strategy.trade_manager import TP1_CLOSE_FRACTION
 
 
 @dataclass
@@ -364,11 +365,11 @@ class Backtester:
 
         if trade["side"] == "long":
             hit_stop = low <= stop
-            hit_tp1 = high >= tp1 and trade["fraction_closed"] < 0.5
+            hit_tp1 = high >= tp1 and trade["fraction_closed"] < TP1_CLOSE_FRACTION
             hit_tp2 = tp2 is not None and high >= tp2
         else:
             hit_stop = high >= stop
-            hit_tp1 = low <= tp1 and trade["fraction_closed"] < 0.5
+            hit_tp1 = low <= tp1 and trade["fraction_closed"] < TP1_CLOSE_FRACTION
             hit_tp2 = tp2 is not None and low <= tp2
 
         # Regula conservatoare: cand stopul si TP-ul sunt in aceeasi bara, stopul castiga.
@@ -380,7 +381,8 @@ class Backtester:
                 "fraction_closed": 1.0 - trade["fraction_closed"],
             }
 
-        # TP1 partial: inchidem 50% si mutam stopul la breakeven + fee-uri.
+        # TP1 partial: inchidem fractiunea configurata si mutam stopul la
+        # breakeven + fee-uri.
         if hit_tp1:
             fee = self.cfg.taker_fee
             slip = self.cfg.slippage
@@ -390,12 +392,12 @@ class Backtester:
             else:
                 trade["stop_loss"] = trade["entry"] * (1 - 2 * (fee + slip))
             trade["moved_to_breakeven"] = True
-            trade["fraction_closed"] = 0.5
+            trade["fraction_closed"] = TP1_CLOSE_FRACTION
             return {
                 "exit_time": bar["datetime"],
                 "exit_price": tp1,
                 "reason": "tp1",
-                "fraction_closed": 0.5,
+                "fraction_closed": TP1_CLOSE_FRACTION,
             }
 
         if hit_tp2:

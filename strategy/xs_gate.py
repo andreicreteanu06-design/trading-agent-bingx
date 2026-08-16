@@ -25,29 +25,43 @@ log = logging.getLogger(__name__)
 DEFAULT_PATH = "logs/validation_xs.json"
 
 
-def path_for(factor: str) -> str:
+def path_for(factor: str, vol_target: float = 0.0) -> str:
     """
-    Un certificat per factor, in fisiere separate.
+    Un certificat per factor si per tinta de volatilitate, in fisiere separate.
 
     Cu un singur fisier comun, validarea factorului B stergea certificatul
     factorului A. Amprenta prindea substituirea si poarta se inchidea corect,
     deci nu era periculos - dar insemna ca fiecare experiment nou anula un
     rezultat castigat cinstit, si trebuia refacut. Numele contine factorul
     tocmai ca rezultatele sa se acumuleze, nu sa se calce in picioare.
+
+    Tinta de volatilitate intra in nume din acelasi motiv: o rulare cu tinta si
+    una fara sunt doua configuratii diferite, cu doua rezultate diferite, si
+    amandoua merita pastrate ca sa poata fi comparate.
     """
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in factor)
+    if vol_target > 0:
+        return f"logs/validation_xs_{safe}_vt{round(vol_target * 100)}.json"
     return f"logs/validation_xs_{safe}.json"
 
 
-def fingerprint(factor: str, tf: str, universe: int, grid: tuple) -> str:
+def fingerprint(
+    factor: str, tf: str, universe: int, grid: tuple, vol_target: float = 0.0
+) -> str:
     """
     Amprenta a ceea ce defineste strategia.
 
     Universul intra in amprenta pentru ca un certificat obtinut pe 40 de
     simboluri nu spune nimic despre 10 - latimea sectiunii transversale ESTE
     strategia, nu un detaliu de configurare.
+
+    La fel si tinta de volatilitate: schimba dimensionarea fiecarei pozitii,
+    deci schimba si randamentul, si drawdown-ul. Fara ea in amprenta, doua
+    rulari cu tinte diferite scriu peste acelasi certificat si poarta nu mai
+    poate spune care configuratie a fost de fapt validata.
     """
-    raw = f"factor={factor}|tf={tf}|universe={universe}|grid={sorted(grid)!r}"
+    raw = (f"factor={factor}|tf={tf}|universe={universe}|grid={sorted(grid)!r}"
+           f"|vol_target={vol_target:g}")
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -106,6 +120,7 @@ def check(
     grid: tuple,
     path: str = DEFAULT_PATH,
     max_age_days: int = 30,
+    vol_target: float = 0.0,
 ) -> XSGateResult:
     cert = load_certificate(path)
     if cert is None:
@@ -119,7 +134,7 @@ def check(
             cert,
         )
 
-    want = fingerprint(factor, tf, universe, grid)
+    want = fingerprint(factor, tf, universe, grid, vol_target)
     if cert.fingerprint != want:
         return XSGateResult(
             False,

@@ -300,6 +300,53 @@ Când `t` iese sub 2.0, poarta se închide singură — și așa trebuie.
 
 ---
 
+## Date care nu se pot cumpăra retroactiv
+
+Trei serii nu există în niciun istoric public și nu se pot recupera mai târziu.
+Se pot doar înregistra, de acum înainte. Ambele loggere pornesc singure prin
+`RunAlways.ps1`, tocmai ca să nu depindă de cineva care își aduce aminte.
+
+```bash
+python tools\oi_logger.py --stats
+```
+Open interest (BingX + Binance), funding, preț **și adâncimea cărții de ordine**
+— cât notional USDT stă în așteptare la ±0.1% și ±0.5% de mid, plus spread-ul.
+Orar, pe cele mai lichide 40 de perpetuals, adică exact universul pe care
+trăiește strategia cross-secțională. Adâncimea răspunde la întrebarea de
+capacitate: câți bani poate absorbi cartea înainte ca slippage-ul să mănânce
+randamentul.
+
+```bash
+python tools\liq_logger.py --stats
+```
+Lichidări forțate reale, în timp real, agregate în găleți de un minut per
+simbol, cu preț mediu ponderat și cel mai mare eveniment din fiecare găleată.
+
+### De ce nu harta de lichidări de pe Coinglass
+
+Nu e o măsurătoare, e un model: estimează unde s-ar afla pozițiile cu levier
+presupunând o distribuție de levier peste open interest. Metodologia e
+proprietară, produsul e în spatele unui paywall, iar graficul e randat pe canvas
+— deci nu există serie istorică brută pe care să se poată rula o validare
+walk-forward. Un semnal care nu poate fi măsurat nu are ce căuta într-un agent
+care tranzacționează.
+
+Lichidările efective sunt publice și gratuite, și sunt exact materia primă pe
+care o agregă și Coinglass — doar că observate, nu presupuse.
+
+**Sursa e OKX, nu Binance.** `fstream.binance.com` nu livrează niciun cadru din
+rețeaua de aici: handshake-ul reușește, apoi tăcere. Verificat cu un stream de
+control aglomerat (`btcusdt@aggTrade`, zero mesaje în 90s) în timp ce Binance
+SPOT, Bybit și OKX răspund normal — deci nu e nici codul, nici sandbox-ul. REST-ul
+pe futures Binance merge în continuare și e folosit mai departe de `oi_logger`.
+
+OKX e o felie din piață, nu piața întreagă. Pentru întrebarea care contează aici
+(care monede văd lichidări disproporționate **față de celelalte**) un eșantion
+consecvent e suficient, fiindcă semnalul e cross-secțional și compară ranguri.
+Nu folosi cifrele ca estimare a lichidărilor totale.
+
+---
+
 ## Ce urmează, dacă vrei să continui
 
 - Backtester peste `logs/signals.jsonl` + date istorice

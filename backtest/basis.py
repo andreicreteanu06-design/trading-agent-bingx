@@ -230,7 +230,10 @@ def simulate(
         cash += pnl_spot + pnl_perp - exit_cost
         total_fees += exit_cost
 
-    eq = pd.Series(equity_curve)
+    # Indexat pe timp, nu pe pozitie: seria se exporta si se aliniaza cu alte
+    # carti esantionate altfel, iar un RangeIndex nu se poate intersecta cu
+    # nimic - da zero observatii comune si o corelatie imposibil de calculat.
+    eq = pd.Series(equity_curve, index=pd.DatetimeIndex(panel["datetime"], name="datetime"))
     periods = len(panel)
     years = periods * 8 / (24 * 365) if periods else 0.0
 
@@ -258,6 +261,7 @@ def simulate(
         "round_trips": round_trips,
         "time_in_market": bars_in / periods if periods else 0.0,
         "years": years,
+        "returns": rets,
     }
 
 
@@ -332,6 +336,17 @@ def main() -> int:
         net = r["funding_collected"] - r["fees_paid"]
         print(f"  {r['symbol']:<8} {r['mode']:<12} {r['funding_collected']:>+12.2f} "
               f"{r['fees_paid']:>12.2f} {net:>+12.2f}")
+
+    # Seriile pe disc, ca sa se poata masura corelatia cu celelalte carti.
+    os.makedirs("logs", exist_ok=True)
+    for r in rows:
+        rets = r.get("returns")
+        if rets is None or rets.empty:
+            continue
+        base = r["symbol"].replace("/", "_")
+        path = f"logs/basis_returns_{base}_{r['mode']}.csv"
+        rets.rename("ret").to_csv(path, index_label="datetime")
+    print(f"\n  Serii de randamente scrise in logs/basis_returns_*.csv")
 
     best = max(rows, key=lambda r: r["annualized"])
     print()
