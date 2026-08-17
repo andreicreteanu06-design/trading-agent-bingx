@@ -55,10 +55,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import CONFIG
 from exchange.bingx_client import BingXClient
+from execution.brake import (
+    STATE_PATH as BRAKE_STATE_PATH,
+    book_brake,
+    status_line as brake_status,
+)
+from execution.rebalance import build_plan
 from strategy import xs_gate
 from backtest.validate_xs import GRID
 from tools.edge_scan import fetch_funding_panel
-from tools.xs_signals import build_target_book
 
 log = logging.getLogger("paper_executor")
 
@@ -73,7 +78,7 @@ LOCK_STALE_AFTER_S = 3600
 
 
 @contextmanager
-def single_instance():
+def single_instance(lock_path: str = LOCK_PATH):
     """
     Lacat pe disc, ca doua executoare sa nu scrie aceeasi stare.
 
@@ -81,19 +86,24 @@ def single_instance():
     Amandoua citesc paper_state.json, amandoua il rescriu, iar cel care termina
     al doilea sterge tranzactiile primului. S-a intamplat deja o data in acest
     proiect, cu o intrare orfana ramasa in jurnal ca dovada.
+
+    `lock_path` e parametru pentru ca hartia si executia reala sunt carti
+    separate, cu stari separate: un lacat comun ar face ca bucla de 4h a hartiei
+    sa blocheze o rebalansare reala scadenta, ceea ce ar fi mai rau decat
+    problema pe care o rezolva.
     """
-    os.makedirs(os.path.dirname(LOCK_PATH) or ".", exist_ok=True)
-    if os.path.exists(LOCK_PATH):
-        age = time.time() - os.path.getmtime(LOCK_PATH)
+    os.makedirs(os.path.dirname(lock_path) or ".", exist_ok=True)
+    if os.path.exists(lock_path):
+        age = time.time() - os.path.getmtime(lock_path)
         if age > LOCK_STALE_AFTER_S:
             log.warning("Lacat vechi de %.0f minute - il consider abandonat.", age / 60)
-            os.remove(LOCK_PATH)
+            os.remove(lock_path)
 
     try:
-        fd = os.open(LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
         raise RuntimeError(
-            "Alt executor de hartie ruleaza deja (logs/paper_executor.lock). "
+            f"Alt executor ruleaza deja ({lock_path}). "
             "Opreste-l inainte, sau asteapta sa termine."
         ) from None
 
@@ -103,7 +113,7 @@ def single_instance():
         yield
     finally:
         try:
-            os.remove(LOCK_PATH)
+            os.remove(lock_path)
         except OSError:
             pass
 
@@ -319,6 +329,19 @@ def run_once(args: argparse.Namespace) -> int:
         print(f"  P&L de funding    : {funding_pnl:+.2f} USDT")
     print(f"  echitate dupa marcaj : {equity_after_marks:.2f} USDT")
 
+    # ------------------------------------------ 1b. frana de drawdown
+    # Se sincronizeaza pe echitatea DUPA marcaj, adica pe pierderea reala, nu pe
+    # cea realizata. Sta inaintea portii pentru ca o frana care se verifica
+    # dupa ce ai decis deja ce tranzactionezi nu e o frana.
+    brake = book_brake()
+    brake.sync(equity_after_marks)
+    print(f"  frana: {brake_status(brake, equity_after_marks)}")
+    if not brake.allowed:
+        print(f"  OPRIT DE FRANA - {brake.reason}")
+        print("  Pozitiile RAMAN deschise; nu se adauga risc nou.")
+        print("  Ridicare manuala: python tools\\killswitch.py --reset "
+              f"--path {BRAKE_STATE_PATH}")
+
     # --------------------------------------------------- 2. verifica poarta
     gate = xs_gate.check(args.factor, args.tf, args.universe, GRID,
                           path=xs_gate.path_for(args.factor))
@@ -358,134 +381,76 @@ def run_once(args: argparse.Namespace) -> int:
     trades: list[dict] = []
     fees_this_run = 0.0
     new_positions: dict[str, Position] = {}
+    plan = None
 
-    if gate.tradeable and due:
-        # ------------------------------------------- 3. cartea tinta si delta
+    if gate.tradeable and due and brake.allowed:
+        # --------------------------------- 3. planul, din acelasi loc ca live-ul
         try:
-            w, asof, n_symbols = build_target_book(
-                client, args.factor, args.tf, args.universe, cert.vol_scale
+            plan = build_plan(
+                client, args.factor, args.tf, args.universe, cert.vol_scale,
+                positions={s: p.qty for s, p in state.positions.items()},
+                equity=equity_after_marks,
+                prices=prices_now,
             )
         except ValueError as exc:
             print(f"  Nu am putut construi cartea tinta: {exc}")
-            w = None
 
-        if w is not None:
-            print(f"  cartea tinta: {n_symbols} simboluri, ultima lumanare {asof:%Y-%m-%d %H:%M} UTC")
+    if plan is not None:
+        print(f"  cartea tinta: {plan.n_symbols} simboluri, "
+              f"ultima lumanare {plan.asof:%Y-%m-%d %H:%M} UTC")
 
-            excluded_min: list[tuple[str, float]] = []
-            target_symbols = set(w.index)
-            union_symbols = target_symbols | set(held_symbols)
-            missing_px = union_symbols - set(prices_now)
-            if missing_px:
-                prices_now.update(client.fetch_last_prices(list(missing_px)))
+        # Pozitiile neatinse isi pastreaza cantitatea si se remarcheaza la
+        # pretul curent; daca pretul lipseste, ramane ultimul cunoscut.
+        new_positions = {
+            s: Position(
+                qty=q,
+                mark_price=prices_now.get(s) or state.positions[s].mark_price,
+            )
+            for s, q in plan.untouched.items()
+        }
 
-            for sym in union_symbols:
-                px = prices_now.get(sym)
-                if px is None or px <= 0:
-                    log.warning("Fara pret pentru %s - simbol sarit la rebalansare.", sym)
-                    continue
+        for t in plan.trades:
+            try:
+                book = client.fetch_order_book(t.symbol, limit=20)
+                best_bid = float(book["bids"][0][0])
+                best_ask = float(book["asks"][0][0])
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Fara carte de ordine pentru %s (%s) - umplu la ultimul pret.",
+                            t.symbol, str(exc)[:60])
+                best_bid = best_ask = t.ref_price
 
-                old_qty = state.positions.get(sym, Position(0.0, px)).qty
-                current_notional = old_qty * px
-                target_weight = float(w.get(sym, 0.0))
-                target_notional = target_weight * equity_after_marks
-                current_weight = current_notional / equity_after_marks if equity_after_marks else 0.0
+            # Cumparam -> luam din ask (platim mai mult). Vindem -> dam in bid
+            # (primim mai putin). Asta e fill-ul REAL al unui ordin de piata, nu
+            # pretul mid pe care il presupune backtestul.
+            fill_price = best_ask if t.delta_notional > 0 else best_bid
+            mid = (best_bid + best_ask) / 2
+            slippage_bps = abs(fill_price - mid) / mid * 1e4 if mid else 0.0
 
-                if abs(target_weight - current_weight) <= REBALANCE_THRESHOLD:
-                    if old_qty != 0.0:
-                        new_positions[sym] = Position(qty=old_qty, mark_price=px)
-                    continue
+            fee = abs(t.delta_notional) * CONFIG.taker_fee
+            fees_this_run += fee
 
-                # Rotunjim mereu la precizia pietei (closing=True sare doar
-                # peste verificarea minimelor, nu si peste rotunjire) - minimul
-                # se verifica mai jos, pe ORDINUL efectiv, nu pe pozitia finala.
-                closing = abs(target_notional) < 1e-9
-                trade_amount = abs(old_qty) if closing else abs(target_notional) / px
-                try:
-                    qty_unsigned = client.normalize_amount(sym, trade_amount, closing=True)
-                except ValueError as exc:
-                    excluded_min.append((sym, target_weight))
-                    if old_qty != 0.0:
-                        new_positions[sym] = Position(qty=old_qty, mark_price=px)
-                    log.info("  %s: %s", sym, exc)
-                    continue
+            if abs(t.new_qty) > 0:
+                new_positions[t.symbol] = Position(qty=t.new_qty, mark_price=t.ref_price)
 
-                # La inchidere pozitia rezultata e exact 0, nu marimea (fara
-                # semn) a tranzactiei de inchidere - altfel un short inchis
-                # (old_qty negativ) ar iesi cu new_qty pozitiv, o inversare de
-                # pozitie inventata din nimic.
-                new_qty = 0.0 if closing else (qty_unsigned if target_notional >= 0 else -qty_unsigned)
-                delta_notional = new_qty * px - current_notional
-                if abs(delta_notional) < 1e-9:
-                    if old_qty != 0.0:
-                        new_positions[sym] = Position(qty=old_qty, mark_price=px)
-                    continue
+            trades.append({
+                "symbol": t.symbol,
+                "delta_notional_usdt": round(t.delta_notional, 2),
+                "fill_price": fill_price,
+                "mid_price": mid,
+                "slippage_bps": round(slippage_bps, 2),
+                "fee_usdt": round(fee, 4),
+            })
 
-                if not closing:
-                    # Minimul bursei se aplica ORDINULUI care s-ar trimite (delta
-                    # fata de pozitia veche), nu pozitiei finale. La un rebalans
-                    # care doar ajusteaza o pozitie deja deschisa cele doua difera:
-                    # tinta poate fi $45 (peste minim) cand ordinul e doar $5 din
-                    # delta (sub minim). Fara aceasta verificare hartia ar arata
-                    # tranzactionabil un ordin pe care bursa l-ar respinge live -
-                    # exact ce acest executor exista sa scoata la iveala.
-                    try:
-                        client.normalize_amount(
-                            sym, abs(new_qty - old_qty), price=px, closing=False,
-                        )
-                    except ValueError as exc:
-                        excluded_min.append((sym, target_weight))
-                        if old_qty != 0.0:
-                            new_positions[sym] = Position(qty=old_qty, mark_price=px)
-                        log.info("  %s: %s", sym, exc)
-                        continue
-
-                try:
-                    book = client.fetch_order_book(sym, limit=20)
-                    best_bid = float(book["bids"][0][0])
-                    best_ask = float(book["asks"][0][0])
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("Fara carte de ordine pentru %s (%s) - umplu la ultimul pret.",
-                                sym, str(exc)[:60])
-                    best_bid = best_ask = px
-
-                # Cumparam -> luam din ask (platim mai mult). Vindem -> dam in
-                # bid (primim mai putin). Asta e fill-ul REAL al unui ordin de
-                # piata, nu pretul mid pe care il presupune backtestul.
-                fill_price = best_ask if delta_notional > 0 else best_bid
-                mid = (best_bid + best_ask) / 2
-                slippage_bps = abs(fill_price - mid) / mid * 1e4 if mid else 0.0
-
-                fee = abs(delta_notional) * CONFIG.taker_fee
-                fees_this_run += fee
-
-                new_positions[sym] = Position(qty=new_qty, mark_price=px)
-
-                trades.append({
-                    "symbol": sym,
-                    "delta_notional_usdt": round(delta_notional, 2),
-                    "fill_price": fill_price,
-                    "mid_price": mid,
-                    "slippage_bps": round(slippage_bps, 2),
-                    "fee_usdt": round(fee, 4),
-                })
-
-            if excluded_min:
-                excluded_weight = sum(abs(wt) for _, wt in excluded_min)
-                print(f"\n  {len(excluded_min)} simboluri sub minimul bursei la acest capital "
-                      f"({excluded_weight:.1%} din expunerea bruta tinta):")
-                for sym, wt in sorted(excluded_min, key=lambda x: -abs(x[1]))[:10]:
-                    print(f"    {sym:<22} pondere tinta {wt:+.2%}")
-                if len(excluded_min) > 10:
-                    print(f"    ... si inca {len(excluded_min) - 10}")
-                print("    Cartea de hartie e mai concentrata decat cea validata -")
-                print("    capital mai mare ar reduce diferenta.")
-
-            # simbolurile ramase din vechea carte, neatinse de bucla de mai sus
-            # (target 0 si sub prag ar fi trecut deja prin ramura "continue")
-        else:
-            new_positions = {s: Position(p.qty, prices_now.get(s, p.mark_price))
-                              for s, p in state.positions.items()}
+        if plan.excluded_min:
+            excluded_weight = sum(abs(wt) for _, wt in plan.excluded_min)
+            print(f"\n  {len(plan.excluded_min)} simboluri sub minimul bursei la acest capital "
+                  f"({excluded_weight:.1%} din expunerea bruta tinta):")
+            for sym, wt in sorted(plan.excluded_min, key=lambda x: -abs(x[1]))[:10]:
+                print(f"    {sym:<22} pondere tinta {wt:+.2%}")
+            if len(plan.excluded_min) > 10:
+                print(f"    ... si inca {len(plan.excluded_min) - 10}")
+            print("    Cartea de hartie e mai concentrata decat cea validata -")
+            print("    capital mai mare ar reduce diferenta.")
     else:
         new_positions = {s: Position(p.qty, prices_now.get(s, p.mark_price))
                           for s, p in state.positions.items()}
@@ -537,6 +502,8 @@ def run_once(args: argparse.Namespace) -> int:
         "equity_after": equity_final,
         "gate_tradeable": gate.tradeable,
         "gate_reason": gate.reason,
+        "brake_ok": brake.allowed,
+        "brake_reason": brake.reason,
         "rebalanced": due,
         "hours_to_next_rebalance": round(hours_left, 1),
         "trades": trades,

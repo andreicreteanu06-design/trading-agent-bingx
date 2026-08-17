@@ -136,6 +136,23 @@ if (-not $mutexCreated) {
     exit 0
 }
 
+# ---- Reap orphans from a previous launcher ----
+#
+# The mutex above guarantees we are the only launcher running. Therefore any
+# project child process alive right now is an orphan: it belonged to a launcher
+# that died without running its finally block — which is exactly what
+# Stop-Process -Force does. Left alone, they hold ports (Next.js EADDRINUSE) and
+# duplicate work (two OI loggers writing the same JSONL). Observed in practice.
+$orphanPatterns = 'app\.server|oi_logger|liq_logger|paper_executor|next start'
+$orphans = Get-CimInstance Win32_Process | Where-Object {
+    $_.ProcessId -ne $PID -and $_.CommandLine -match $orphanPatterns
+}
+foreach ($o in $orphans) {
+    Write-Log "Reaping orphan PID $($o.ProcessId) from a previous launcher"
+    try { Stop-Process -Id $o.ProcessId -Force -ErrorAction Stop } catch { }
+}
+if ($orphans) { Start-Sleep -Seconds 3 }  # lasa porturile sa se elibereze
+
 Write-Log "=== LAUNCHER STARTED ==="
 Write-Log "Working dir: $ScriptDir"
 Write-Log "Python: ${ApiHost}:$PythonPort | Next.js: ${NextHost}:$NextPort"
