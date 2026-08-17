@@ -68,7 +68,7 @@ def load_book() -> dict:
 
 
 def build_target_book(
-    client: BingXClient, factor: str, tf: str, universe: int
+    client: BingXClient, factor: str, tf: str, universe: int, vol_scale: bool
 ) -> tuple[pd.Series, pd.Timestamp, int]:
     """
     Ponderile tinta, gata orientate si dimensionate, plus data ultimei lumanari
@@ -78,6 +78,11 @@ def build_target_book(
     tools/execution/paper_executor.py o foloseste pe aceeasi cale, si o a doua
     copie a acestei logici ar fi exact greseala de duplicare a GRID-ului
     reparata mai devreme in acest proiect.
+
+    `vol_scale` vine din certificat, nu e ales aici. Era hardcodat True, dar
+    validarea alege intre dimensionare invers-volatilitate si egala pe rang la
+    fel cum alege hold-ul; cu True fix, cartea live putea fi dimensionata altfel
+    decat cea masurata - alta strategie, cu certificatul alteia.
     """
     symbols = pick_universe(client, universe)
     # 400 aduse, 200 cerute: cel mai lung indicator din compute_features are o
@@ -92,7 +97,7 @@ def build_target_book(
     sig = factor_signal(feats, factor)
     vols = pd.DataFrame({s: f["vol_24"] for s, f in feats.items()})
 
-    w = build_weights(sig.iloc[-1], vols.iloc[-1], vol_scale=True)
+    w = build_weights(sig.iloc[-1], vols.iloc[-1], vol_scale=vol_scale)
     if w.empty:
         raise ValueError("Nu s-a putut construi cartea (prea putine date valide).")
 
@@ -132,9 +137,16 @@ def main() -> int:
         path=xs_gate.path_for(args.factor),
     )
 
+    # Dimensionarea vine din certificat. Fara certificat nu stim ce a fost
+    # validat, deci afisam cartea cu dimensionarea egala pe rang - varianta
+    # neutra - si poarta de mai jos spune oricum ca nu e tranzactionabila.
+    vol_scale = bool(gate.certificate.vol_scale) if gate.certificate else False
+
     client = BingXClient()
     try:
-        w, asof, n_symbols = build_target_book(client, args.factor, args.tf, args.universe)
+        w, asof, n_symbols = build_target_book(
+            client, args.factor, args.tf, args.universe, vol_scale
+        )
     except ValueError as exc:
         print(str(exc))
         return 1

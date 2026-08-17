@@ -416,6 +416,7 @@ def main() -> int:
 
     oos_all: list[pd.Series] = []
     fold_rows = []
+    chosen_cfgs: list[tuple[int, bool]] = []
 
     for k in range(args.folds):
         is_end = (k + 1) * chunk
@@ -461,6 +462,7 @@ def main() -> int:
         period = (f"{r_oos.index[0]:%Y-%m-%d} .. {r_oos.index[-1]:%Y-%m-%d}")
         cfg = f"h{hold} {'ivol' if vs else 'egal'}"
         print(f"  {k + 1:<6}{period:<26}{cfg:<16}{ann:>10.1%}{sh:>8.2f}")
+        chosen_cfgs.append((hold, vs))
 
     if not oos_all:
         print("\n  Niciun fold nu a produs randamente. Prea putine date.")
@@ -524,6 +526,17 @@ def main() -> int:
 
     passed = all(ok for _, ok in checks)
 
+    # Configuratia pe care o va folosi executorul: cea aleasa de ULTIMUL fold,
+    # antrenat pe cele mai multe date si cel mai aproape de prezent. Daca
+    # foldurile nu sunt de acord intre ele, alegerea e instabila si merita
+    # spusa - un hold care sare de la 24 la 42 intre folduri inseamna ca datele
+    # nu prefera clar nicio cadenta, iar cea salvata e mai degraba noroc.
+    live_hold, live_vs = chosen_cfgs[-1]
+    distinct_holds = sorted({h for h, _ in chosen_cfgs})
+    if len(distinct_holds) > 1:
+        print(f"\n  Atentie: foldurile au ales holduri diferite {distinct_holds}. "
+              f"Salvez {live_hold} (ultimul fold), dar alegerea nu e stabila.")
+
     # Certificatul se scrie SI cand validarea pica. O respingere consemnata e la
     # fel de valoroasa ca o trecere: e dovada ca intrebarea a fost pusa, si
     # opreste poarta sa lase semnale sa treaca doar pentru ca nu stie nimic.
@@ -548,6 +561,8 @@ def main() -> int:
             period_start=str(stitched.index[0]),
             period_end=str(stitched.index[-1]),
             notes=[lbl for lbl, ok in checks if not ok],
+            hold=live_hold,
+            vol_scale=live_vs,
         ),
         path=xs_gate.path_for(args.factor, args.vol_target, not args.no_funding_cost),
     )

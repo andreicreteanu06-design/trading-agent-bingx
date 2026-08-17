@@ -7,12 +7,18 @@ Executor de hartie pentru strategia cross-sectionala. Fara ordine reale.
     python execution\\paper_executor.py --loop               # ruleaza continuu
     python execution\\paper_executor.py --reset              # sterge starea
 
-Ruleaza-l periodic (manual sau printr-un task programat), la acelasi interval
-la care rebalanseaza strategia (`hold` din certificatul validat, de obicei
-zile). Fiecare rulare: marcheaza pozitiile existente la piata cu preturi
-REALE, aplica funding-ul REAL acumulat de la ultima rulare, si daca poarta e
-deschisa, calculeaza tranzactiile necesare si le "umple" la bid/ask REAL din
-carte - fara sa trimita niciun ordin.
+Doua ritmuri diferite, si asta e intentionat:
+
+  - TREZIREA (`--interval`, implicit 4h) marcheaza pozitiile la piata cu
+    preturi REALE si aplica funding-ul REAL acumulat. E doar contabilitate,
+    nu costa nimic, si tine echitatea proaspata in dashboard.
+  - REBALANSAREA se face doar la fiecare `hold` bare, cat spune certificatul
+    validat (la hold=30 pe 4h, o data la 5 zile). Aici se genereaza singurele
+    tranzactii.
+
+Confuzia intre cele doua a fost un bug real: executorul rebalansa la fiecare
+trezire, adica de 24 de ori mai des decat strategia masurata - 33% pe an in
+comisioane in loc de 1.1%, pe un edge validat de 53%.
 
 NICIUN APEL DE SCRIERE CATRE BURSA. Singurele metode BingXClient folosite aici
 sunt fetch_* (citire). create_market_order si create_stop_loss nu sunt
@@ -41,7 +47,8 @@ import logging
 import os
 import sys
 import time
-from dataclasses import asdict, dataclass, field
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -57,6 +64,48 @@ log = logging.getLogger("paper_executor")
 
 STATE_PATH = "logs/paper_state.json"
 LEDGER_PATH = "logs/paper_ledger.jsonl"
+LOCK_PATH = "logs/paper_executor.lock"
+
+# O rulare completa dureaza zeci de secunde (40 de simboluri, funding, carte de
+# ordine). Peste o ora inseamna un proces mort care si-a lasat lacatul in urma,
+# nu unul lent.
+LOCK_STALE_AFTER_S = 3600
+
+
+@contextmanager
+def single_instance():
+    """
+    Lacat pe disc, ca doua executoare sa nu scrie aceeasi stare.
+
+    Scenariul real: lansatorul tine unul in --loop, iar tu rulezi unul manual.
+    Amandoua citesc paper_state.json, amandoua il rescriu, iar cel care termina
+    al doilea sterge tranzactiile primului. S-a intamplat deja o data in acest
+    proiect, cu o intrare orfana ramasa in jurnal ca dovada.
+    """
+    os.makedirs(os.path.dirname(LOCK_PATH) or ".", exist_ok=True)
+    if os.path.exists(LOCK_PATH):
+        age = time.time() - os.path.getmtime(LOCK_PATH)
+        if age > LOCK_STALE_AFTER_S:
+            log.warning("Lacat vechi de %.0f minute - il consider abandonat.", age / 60)
+            os.remove(LOCK_PATH)
+
+    try:
+        fd = os.open(LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise RuntimeError(
+            "Alt executor de hartie ruleaza deja (logs/paper_executor.lock). "
+            "Opreste-l inainte, sau asteapta sa termine."
+        ) from None
+
+    try:
+        os.write(fd, f"{os.getpid()} {datetime.now(timezone.utc).isoformat()}".encode())
+        os.close(fd)
+        yield
+    finally:
+        try:
+            os.remove(LOCK_PATH)
+        except OSError:
+            pass
 
 # Sub acest prag de pondere, o diferenta e zgomot de rotunjire, nu o decizie -
 # aceeasi valoare ca in tools/xs_signals.py, ca cele doua unelte sa fie de
@@ -81,6 +130,10 @@ class PaperState:
     funding_paid_usdt: float = 0.0
     fees_paid_usdt: float = 0.0
     trade_count: int = 0
+    # Cand s-a rebalansat ultima oara, distinct de last_updated_at (fiecare
+    # trezire). Marcarea la piata se face la fiecare rulare; tranzactiile doar
+    # cand a trecut perioada de detinere validata.
+    last_rebalance_at: str | None = None
 
 
 def load_state() -> PaperState | None:
@@ -124,6 +177,29 @@ def load_last_ledger_entry() -> dict | None:
         return None
 
 
+_TF_SECONDS = {"1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600, "12h": 43200, "1d": 86400}
+
+
+def rebalance_due(
+    last_rebalance_at: str | None, now: datetime, tf: str, hold: int
+) -> tuple[bool, float]:
+    """
+    E scadenta rebalansarea, si cate ore mai sunt pana la urmatoarea.
+
+    Strategia validata rebalanseaza la fiecare `hold` bare, nu la fiecare
+    trezire a executorului. Diferenta nu e cosmetica: la hold=30 pe 4h asta
+    inseamna 73 de rebalansari pe an, iar la ritmul de trezire de 4h ar fi
+    2190 - masurat pe cartea de hartie, 33% pe an in comisioane in loc de 1.1%,
+    pe un edge validat de 53%. Executorul trebuie sa tranzactioneze strategia
+    care a fost masurata, nu una cu acelasi semnal si alta cadenta.
+    """
+    period_h = hold * _TF_SECONDS[tf] / 3600
+    if last_rebalance_at is None:
+        return True, 0.0
+    elapsed_h = (now - datetime.fromisoformat(last_rebalance_at)).total_seconds() / 3600
+    return elapsed_h >= period_h, max(0.0, period_h - elapsed_h)
+
+
 def funding_accrued_since(
     symbols: list[str], since: datetime | None, until: datetime
 ) -> dict[str, float]:
@@ -161,6 +237,7 @@ def print_status(state: PaperState) -> None:
     print("=" * 78)
     print(f"  pornit         : {state.started_at[:16]}")
     print(f"  ultima rulare  : {(state.last_updated_at or '-')[:16]}")
+    print(f"  ultima rebalans: {(state.last_rebalance_at or '-')[:16]}")
     print(f"  capital initial: {state.capital_usdt:.2f} USDT")
     print(f"  echitate acum  : {state.equity_usdt:.2f} USDT  "
           f"({state.equity_usdt / state.capital_usdt - 1:+.2%})")
@@ -254,14 +331,40 @@ def run_once(args: argparse.Namespace) -> int:
             print("  Pozitiile existente RAMAN deschise (nu se lichideaza automat),")
             print("  dar nu se adauga risc nou cat poarta e inchisa.")
 
+    # Un certificat scris inainte ca hold/vol_scale sa fie salvate nu spune la
+    # ce cadenta a fost masurata strategia. A ghici inseamna a tranzactiona o
+    # strategie nevalidata cu certificatul alteia, deci refuzam explicit.
+    cert = gate.certificate
+    if gate.tradeable and (not cert or not cert.hold or cert.vol_scale is None):
+        print("  Certificat fara hold/vol_scale (format vechi) - nu tranzactionez.")
+        print("  Ruleaza python backtest\\validate_xs.py ca sa-l rescrii.")
+        gate = xs_gate.XSGateResult(False, "certificat fara cadenta validata", cert)
+
+    due, hours_left = (False, 0.0)
+    if gate.tradeable:
+        due, hours_left = rebalance_due(
+            state.last_rebalance_at, now, args.tf, cert.hold
+        )
+        period_h = cert.hold * _TF_SECONDS[args.tf] / 3600
+        sizing = "invers volatilitatii" if cert.vol_scale else "egala pe rang"
+        print(f"  Cadenta validata: hold {cert.hold} bare ({period_h / 24:.1f} zile), "
+              f"dimensionare {sizing}")
+        if due:
+            print("  Rebalansare SCADENTA acum.")
+        else:
+            print(f"  Nu e scadenta - {hours_left:.1f}h pana la urmatoarea. "
+                  f"Doar marchez la piata.")
+
     trades: list[dict] = []
     fees_this_run = 0.0
     new_positions: dict[str, Position] = {}
 
-    if gate.tradeable:
+    if gate.tradeable and due:
         # ------------------------------------------- 3. cartea tinta si delta
         try:
-            w, asof, n_symbols = build_target_book(client, args.factor, args.tf, args.universe)
+            w, asof, n_symbols = build_target_book(
+                client, args.factor, args.tf, args.universe, cert.vol_scale
+            )
         except ValueError as exc:
             print(f"  Nu am putut construi cartea tinta: {exc}")
             w = None
@@ -418,6 +521,10 @@ def run_once(args: argparse.Namespace) -> int:
         funding_paid_usdt=state.funding_paid_usdt - funding_pnl,
         fees_paid_usdt=state.fees_paid_usdt + fees_this_run,
         trade_count=state.trade_count + len(trades),
+        # Doar o rebalansare efectiv scadenta muta ceasul. O rulare cu poarta
+        # inchisa nu conteaza ca rebalansare, altfel prima rulare de dupa
+        # redeschiderea portii ar astepta inca o perioada intreaga degeaba.
+        last_rebalance_at=now.isoformat() if due else state.last_rebalance_at,
     )
     save_state(new_state)
 
@@ -430,6 +537,8 @@ def run_once(args: argparse.Namespace) -> int:
         "equity_after": equity_final,
         "gate_tradeable": gate.tradeable,
         "gate_reason": gate.reason,
+        "rebalanced": due,
+        "hours_to_next_rebalance": round(hours_left, 1),
         "trades": trades,
     })
 
@@ -450,7 +559,8 @@ def main() -> int:
     p.add_argument("--loop", action="store_true",
                    help="ruleaza continuu, la fiecare --interval secunde")
     p.add_argument("--interval", type=int, default=4 * 3600,
-                   help="secunde intre rulari in modul --loop (implicit 4h, cat tf-ul strategiei)")
+                   help="secunde intre TREZIRI in modul --loop (implicit 4h). "
+                        "Nu e cadenta de rebalansare - aia vine din certificat.")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s",
@@ -471,7 +581,12 @@ def main() -> int:
         return 0
 
     if not args.loop:
-        return run_once(args)
+        try:
+            with single_instance():
+                return run_once(args)
+        except RuntimeError as exc:
+            print(str(exc))
+            return 1
 
     log.info("Executor de hartie in bucla, la fiecare %d secunde. Ctrl+C pentru oprire.",
              args.interval)
@@ -479,7 +594,13 @@ def main() -> int:
         while True:
             start = time.time()
             try:
-                run_once(args)
+                # Lacatul se ia si se lasa la FIECARE rulare, nu o data pentru
+                # toata bucla: intre treziri trec ore, iar o rulare manuala in
+                # acest timp e legitima si nu trebuie blocata inutil.
+                with single_instance():
+                    run_once(args)
+            except RuntimeError as exc:
+                log.warning("%s", exc)
             except Exception as exc:  # noqa: BLE001
                 # O rulare picata (retea, date lipsa) nu are voie sa opreasca
                 # o bucla care trebuie sa mearga zile in sir.

@@ -95,6 +95,15 @@ class XSCertificate:
     period_start: str = ""
     period_end: str = ""
     notes: list = field(default_factory=list)
+    # Cadenta si dimensionarea la care a fost masurat randamentul de mai sus.
+    # Fara ele in certificat, executorul nu are de unde sa stie la ce ritm a
+    # fost validata strategia si rebalanseaza la ritmul lui - masurat, 2190 de
+    # rebalansari pe an in loc de 91, adica 33% pe an in comisioane in loc de
+    # 1.4%, pe un edge de 57%. Implicit 0/None inseamna certificat vechi,
+    # dinainte ca acestea sa fie salvate; executorul trebuie sa refuze sa
+    # tranzactioneze pe el, nu sa ghiceasca.
+    hold: int = 0
+    vol_scale: bool | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
