@@ -52,6 +52,7 @@ $PythonLog = Join-Path $LogDir "python-api.log"
 $NextLog   = Join-Path $LogDir "nextjs.log"
 $OiLoggerLog = Join-Path $LogDir "oi-logger.log"
 $LiqLoggerLog = Join-Path $LogDir "liq-logger.log"
+$DepthLoggerLog = Join-Path $LogDir "depth-logger.log"
 $PaperExecLog = Join-Path $LogDir "paper-executor.log"
 $LauncherLog = Join-Path $LogDir "launcher.log"
 
@@ -143,7 +144,7 @@ if (-not $mutexCreated) {
 # that died without running its finally block — which is exactly what
 # Stop-Process -Force does. Left alone, they hold ports (Next.js EADDRINUSE) and
 # duplicate work (two OI loggers writing the same JSONL). Observed in practice.
-$orphanPatterns = 'app\.server|oi_logger|liq_logger|paper_executor|next start'
+$orphanPatterns = 'app\.server|oi_logger|liq_logger|depth_logger|paper_executor|next start'
 $orphans = Get-CimInstance Win32_Process | Where-Object {
     $_.ProcessId -ne $PID -and $_.CommandLine -match $orphanPatterns
 }
@@ -161,6 +162,7 @@ $pythonProc = $null
 $nextProc   = $null
 $oiLoggerProc = $null
 $liqLoggerProc = $null
+$depthLoggerProc = $null
 $paperExecProc = $null
 $running = $true
 
@@ -174,7 +176,7 @@ $running = $true
 # without needing to hook console events at all.
 function Stop-Children {
     Write-Log "Stopping child processes..."
-    foreach ($p in @($pythonProc, $nextProc, $oiLoggerProc, $liqLoggerProc, $paperExecProc)) {
+    foreach ($p in @($pythonProc, $nextProc, $oiLoggerProc, $liqLoggerProc, $depthLoggerProc, $paperExecProc)) {
         if ($p -and -not $p.HasExited) {
             try { $p.Kill() } catch { }
         }
@@ -220,6 +222,16 @@ while ($running) {
         $liqLoggerProc = Start-ProcessWithLogging -Name "LiqLogger" `
             -Exe "python" -ArgLine "tools\liq_logger.py" `
             -WorkingDir $ScriptDir -LogFile $LiqLoggerLog
+    }
+
+    # --- Order book depth logger (BTC/ETH/SOL, for scalping edge research) ---
+    # Same reasoning as the liquidation logger: depth history cannot be bought,
+    # only recorded, so it has to survive reboots without anyone remembering it.
+    if (-not $depthLoggerProc -or $depthLoggerProc.HasExited) {
+        Write-Log "Starting depth logger..."
+        $depthLoggerProc = Start-ProcessWithLogging -Name "DepthLogger" `
+            -Exe "python" -ArgLine "tools\depth_logger.py" `
+            -WorkingDir $ScriptDir -LogFile $DepthLoggerLog
     }
 
     # --- Paper trading executor (no real orders — see execution/paper_executor.py) ---
