@@ -26,7 +26,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd  # noqa: E402
 
 from execution import rebalance  # noqa: E402
-from execution.brake import CONFIG as BRAKE_CFG, book_brake, status_line  # noqa: E402
+from execution.brake import (  # noqa: E402
+    CONFIG as BRAKE_CFG,
+    LIVE_STATE_PATH as LIVE_BRAKE_PATH,
+    PAPER_STATE_PATH as PAPER_BRAKE_PATH,
+    book_brake,
+    status_line,
+)
 from execution.live_executor import (  # noqa: E402
     client_order_id,
     exchange_positions,
@@ -177,6 +183,20 @@ def test_brake(tmp):
     line = status_line(ks3, 950.0)
     check("linia de stare arata drawdown, nu contoare de tranzactii",
           "drawdown" in line and "trades" not in line)
+
+    # Regresie: hartia si executia reala au impartit odata acelasi fisier, iar o
+    # proba seaca pe un cont gol (echitate 0) a citit un drawdown de 100% fata de
+    # varful cartii de hartie si a oprit-o pe nedrept.
+    check("hartia si executia reala au fisiere diferite",
+          PAPER_BRAKE_PATH != LIVE_BRAKE_PATH)
+
+    paper = book_brake(os.path.join(tmp, "p.json"))
+    paper.sync(500.0)
+    live = book_brake(os.path.join(tmp, "l.json"))
+    live.sync(0.0)
+    check("un cont real gol nu opreste cartea de hartie",
+          book_brake(os.path.join(tmp, "p.json")).allowed)
+    check("un cont real gol nu-si inventeaza un drawdown", live.allowed)
 
 
 # ----------------------------------------------------------------- scadenta

@@ -1,14 +1,17 @@
 """
 Inspectare si resetare kill-switch.
 
-    python tools/killswitch.py                 # cartea BTC/ETH/SOL
-    python tools/killswitch.py --reset         # ridica blocarea
-    python tools/killswitch.py --xs            # cartea cross-sectionala
-    python tools/killswitch.py --xs --reset
+    python tools/killswitch.py                      # cartea BTC/ETH/SOL
+    python tools/killswitch.py --reset              # ridica blocarea
+    python tools/killswitch.py --book paper         # cartea XS de hartie
+    python tools/killswitch.py --book live          # cartea XS reala
+    python tools/killswitch.py --book paper --reset
 
-Doua carti, doua frane separate, doua fisiere de stare. Nu pot fi una singura:
+Trei carti, trei frane separate, trei fisiere de stare. Nu pot fi una singura:
 un drawdown pe o carte ar opri-o pe cealalta, iar varful de echitate al uneia
-n-are nicio legatura cu al celeilalte.
+n-are nicio legatura cu al celeilalte. Regula a fost deja incalcata o data -
+hartia si executia reala imparteau un fisier, iar prima proba seaca pe un cont
+gol a citit un drawdown de 100% fata de varful cartii de hartie.
 
 Inainte sa dai --reset, raspunde onest la intrebarea: s-a schimbat ceva in
 strategie, sau doar vrei sa mai tranzactionezi?
@@ -23,7 +26,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from execution.brake import STATE_PATH as XS_BRAKE_PATH, book_brake
+from execution.brake import LIVE_STATE_PATH, PAPER_STATE_PATH, book_brake
 from strategy.kill_switch import KillSwitch, KillSwitchConfig
 
 C = cfg.CONFIG
@@ -32,13 +35,17 @@ C = cfg.CONFIG
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--reset", action="store_true")
-    parser.add_argument("--xs", action="store_true",
-                        help="frana cartii cross-sectionale, nu cea BTC/ETH/SOL")
+    parser.add_argument("--book", choices=("ts", "paper", "live"), default="ts",
+                        help="ts = BTC/ETH/SOL (implicit), paper = cartea XS de "
+                             "hartie, live = cartea XS reala")
     args = parser.parse_args()
 
-    if args.xs:
-        ks = book_brake(XS_BRAKE_PATH)
-        title = "FRANA CARTE CROSS-SECTIONALA"
+    # Fiecare carte are frana ei. Vezi execution/brake.py: doua carti cu
+    # echitati diferite nu pot imparti un contor de varf.
+    if args.book in ("paper", "live"):
+        path = PAPER_STATE_PATH if args.book == "paper" else LIVE_STATE_PATH
+        ks = book_brake(path)
+        title = f"FRANA CARTE CROSS-SECTIONALA ({args.book})"
     else:
         ks = KillSwitch(
             os.path.join(C.log_dir, "killswitch.json"),
@@ -57,7 +64,7 @@ def main() -> int:
     print(f"  Ziua               : {s.day or '-'}")
     print(f"  Echity start zi    : {s.day_start_equity:.2f}")
     print(f"  Varf echity        : {s.peak_equity:.2f}")
-    if args.xs:
+    if args.book in ("paper", "live"):
         # Contoarele per-tranzactie nu sunt alimentate pentru o carte de
         # portofoliu (vezi execution/brake.py) - afisate ar parea limite active.
         print("  (contoarele de tranzactii/pierderi consecutive nu se aplica)")

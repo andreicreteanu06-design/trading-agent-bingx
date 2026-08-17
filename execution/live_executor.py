@@ -53,7 +53,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config as cfg
 from backtest.validate_xs import GRID
 from exchange.bingx_client import BingXClient
-from execution.brake import book_brake, status_line as brake_status
+from execution.brake import (
+    LIVE_STATE_PATH as BRAKE_STATE_PATH,
+    book_brake,
+    status_line as brake_status,
+)
 from execution.paper_executor import rebalance_due, single_instance
 from execution.rebalance import build_plan
 from strategy import xs_gate
@@ -63,6 +67,13 @@ log = logging.getLogger("live_executor")
 STATE_PATH = "logs/live_state.json"
 JOURNAL_PATH = "logs/live_journal.jsonl"
 LOCK_PATH = "logs/live_executor.lock"
+
+# Costul minim pe ordin la BingX e 2 USDT. O carte de 40-50 de picioare cu
+# expunere bruta 1x are nevoie de mult mai mult ca fiecare picior sa treaca de
+# el; sub 20 USDT nu trece niciunul, deci nu are rost nici sa aducem datele.
+# Deasupra pragului lasam planul sa raporteze onest cate picioare cad sub minim -
+# acela e semnalul ca respectivul capital e prea mic pentru cartea validata.
+MIN_VIABLE_EQUITY = 20.0
 
 
 @dataclass
@@ -183,6 +194,19 @@ def run_once(args) -> int:
     print(f"  echitate reala : {equity:.2f} USDT")
     print(f"  pozitii la bursa: {len(positions)}")
 
+    if equity < MIN_VIABLE_EQUITY and not positions:
+        # Nu e o limita de risc, e o gardă împotriva muncii inutile: sub acest
+        # prag fiecare picior al cartii cade sub costul minim al bursei (2 USDT),
+        # deci planul ar aduce 50 de simboluri ca sa produca zero tranzactii.
+        #
+        # Pragul NU e zero pentru ca un cont "gol" nu are echitate zero: acesta
+        # avea 0.0004 USDT ramase, si o verificare pe zero exact nu a prins-o.
+        print(f"  Sub {MIN_VIABLE_EQUITY:.0f} USDT nu se poate construi cartea - "
+              f"fiecare picior ar cadea sub minimul bursei.")
+        print("  (pe BingX portofelul spot si cel de futures sunt separate;")
+        print("   daca ai fonduri, verifica daca sunt in cel de futures)")
+        return 0
+
     # ------------------------------- 2. rebalansare intrerupta ramasa in aer?
     if state.open_rebalance:
         print()
@@ -196,7 +220,7 @@ def run_once(args) -> int:
         return 1
 
     # --------------------------------------------------------- 3. frana
-    brake = book_brake()
+    brake = book_brake(BRAKE_STATE_PATH)
     brake.sync(equity)
     print(f"  frana: {brake_status(brake, equity)}")
     if not brake.allowed:
@@ -235,7 +259,13 @@ def run_once(args) -> int:
 
     print(f"  plan: {plan.summary()}")
     if not plan.trades:
-        print("  Nimic de tranzactionat.")
+        if plan.excluded_min:
+            excluded_weight = sum(abs(w) for _, w in plan.excluded_min)
+            print(f"  Nicio tranzactie posibila: {len(plan.excluded_min)} simboluri "
+                  f"({excluded_weight:.0%} din expunerea tinta) cad sub minimul bursei")
+            print(f"  la {equity:.2f} USDT. Cartea validata are nevoie de mai mult capital.")
+        else:
+            print("  Nimic de tranzactionat - cartea tinta coincide cu cea detinuta.")
         return 0
 
     rebalance_id = f"{now:%Y%m%dT%H%M%S}"

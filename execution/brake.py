@@ -37,18 +37,25 @@ import os
 
 from strategy.kill_switch import KillSwitch, KillSwitchConfig
 
-STATE_PATH = "logs/killswitch_xs.json"
+# Un fisier de stare per CARTE, nu per strategie. Doua carti cu echitati
+# diferite nu pot imparti un contor de varf: un drawdown pe una ar opri-o pe
+# cealalta, iar o zi buna pe una ar masca o zi proasta pe alta.
+#
+# Regula asta a fost scrisa aici pentru a separa cartea XS de cea BTC/ETH/SOL,
+# apoi incalcata imediat un nivel mai jos: hartia si executia reala au impartit
+# acelasi fisier. Prima proba seaca a executorului real a prins-o - cartea de
+# hartie avea varf 499 USDT, contul real avea 0, si frana a citit un drawdown
+# de 100%. Aceeasi greseala, alta scara.
+PAPER_STATE_PATH = "logs/killswitch_xs_paper.json"
+LIVE_STATE_PATH = "logs/killswitch_xs_live.json"
 
-# Fisier separat de killswitch.json al strategiei BTC/ETH/SOL. Doua strategii
-# cu echitati diferite nu pot imparti un contor de varf: un drawdown pe una ar
-# opri-o pe cealalta, iar o zi buna pe una ar masca o zi proasta pe alta.
 CONFIG = KillSwitchConfig(
     max_daily_loss_pct=0.03,
     max_total_drawdown_pct=0.15,
 )
 
 
-def book_brake(state_path: str = STATE_PATH) -> KillSwitch:
+def book_brake(state_path: str) -> KillSwitch:
     os.makedirs(os.path.dirname(state_path) or ".", exist_ok=True)
     return KillSwitch(state_path, CONFIG)
 

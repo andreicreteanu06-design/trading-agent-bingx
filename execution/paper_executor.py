@@ -56,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import CONFIG
 from exchange.bingx_client import BingXClient
 from execution.brake import (
-    STATE_PATH as BRAKE_STATE_PATH,
+    PAPER_STATE_PATH as BRAKE_STATE_PATH,
     book_brake,
     status_line as brake_status,
 )
@@ -333,7 +333,7 @@ def run_once(args: argparse.Namespace) -> int:
     # Se sincronizeaza pe echitatea DUPA marcaj, adica pe pierderea reala, nu pe
     # cea realizata. Sta inaintea portii pentru ca o frana care se verifica
     # dupa ce ai decis deja ce tranzactionezi nu e o frana.
-    brake = book_brake()
+    brake = book_brake(BRAKE_STATE_PATH)
     brake.sync(equity_after_marks)
     print(f"  frana: {brake_status(brake, equity_after_marks)}")
     if not brake.allowed:
