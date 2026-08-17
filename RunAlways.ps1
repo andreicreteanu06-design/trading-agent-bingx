@@ -121,6 +121,21 @@ function Start-ProcessWithLogging {
     return $proc
 }
 
+# ---- Single-instance guard ----
+#
+# Doua instante simultane pornesc doua seturi de procese copil pe aceleasi
+# porturi: a doua nu poate lega portul, moare, reporneste, e omorata de
+# supervizorul primeia la urmatorul ciclu de 10s - Next.js repornind la
+# fiecare ~20s. S-a intamplat deja o data in productie. Un mutex global e
+# vizibil intre orice doua procese Windows, spre deosebire de un fisier PID
+# care poate ramane stale dupa un crash.
+$mutexCreated = $false
+$singleInstanceMutex = New-Object System.Threading.Mutex($true, "Global\BingXTradingAgent_RunAlways", [ref]$mutexCreated)
+if (-not $mutexCreated) {
+    Write-Log "O alta instanta a launcherului ruleaza deja - ies fara sa pornesc nimic."
+    exit 0
+}
+
 Write-Log "=== LAUNCHER STARTED ==="
 Write-Log "Working dir: $ScriptDir"
 Write-Log "Python: ${ApiHost}:$PythonPort | Next.js: ${NextHost}:$NextPort"
@@ -207,5 +222,9 @@ while ($running) {
 }
 finally {
     Stop-Children
+    if ($singleInstanceMutex) {
+        try { $singleInstanceMutex.ReleaseMutex() } catch { }
+        $singleInstanceMutex.Dispose()
+    }
     Write-Log "=== LAUNCHER STOPPED ==="
 }

@@ -125,20 +125,25 @@ export function PaperBookSection() {
     }
   }, [selected]);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await api<PaperBook>("/api/paper");
-      if (alive.current) {
-        setBook(data);
-        setConnected(true);
-      }
-    } catch {
-      if (alive.current) setConnected(false);
-    }
-  }, []);
-
   useEffect(() => {
     alive.current = true;
+
+    // Definita local, nu cu useCallback la nivelul componentei - efectul o
+    // apeleaza direct la montare, iar un apel sincron de setState dintr-un
+    // callback urmarit de hooks declanseaza react-hooks/set-state-in-effect
+    // (acelasi motiv pentru care agent-dashboard.tsx tine tick() local).
+    async function load() {
+      try {
+        const data = await api<PaperBook>("/api/paper");
+        if (alive.current) {
+          setBook(data);
+          setConnected(true);
+        }
+      } catch {
+        if (alive.current) setConnected(false);
+      }
+    }
+
     void load();
     // O carte rebalansata la ore, nu la secunde - pollingul rapid din restul
     // consolei (3-12s) n-ar arata nimic nou aici, doar ar bate API-ul degeaba.
@@ -147,7 +152,7 @@ export function PaperBookSection() {
       alive.current = false;
       window.clearInterval(timer);
     };
-  }, [load]);
+  }, []);
 
   const totalReturn =
     book?.exists && book.capital_usdt

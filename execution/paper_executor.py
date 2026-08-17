@@ -293,16 +293,13 @@ def run_once(args: argparse.Namespace) -> int:
                         new_positions[sym] = Position(qty=old_qty, mark_price=px)
                     continue
 
-                # Marimea REALA acceptata de bursa, cu acelasi normalize_amount
-                # care va valida si ordinele live - un simbol respins aici e
-                # respins si acolo, deci hartia arata din prima ce e neexecutabil
-                # la acest capital, nu doar dupa ce esueaza cu bani reali.
+                # Rotunjim mereu la precizia pietei (closing=True sare doar
+                # peste verificarea minimelor, nu si peste rotunjire) - minimul
+                # se verifica mai jos, pe ORDINUL efectiv, nu pe pozitia finala.
                 closing = abs(target_notional) < 1e-9
                 trade_amount = abs(old_qty) if closing else abs(target_notional) / px
                 try:
-                    qty_unsigned = client.normalize_amount(
-                        sym, trade_amount, price=px, closing=closing,
-                    )
+                    qty_unsigned = client.normalize_amount(sym, trade_amount, closing=True)
                 except ValueError as exc:
                     excluded_min.append((sym, target_weight))
                     if old_qty != 0.0:
@@ -320,6 +317,25 @@ def run_once(args: argparse.Namespace) -> int:
                     if old_qty != 0.0:
                         new_positions[sym] = Position(qty=old_qty, mark_price=px)
                     continue
+
+                if not closing:
+                    # Minimul bursei se aplica ORDINULUI care s-ar trimite (delta
+                    # fata de pozitia veche), nu pozitiei finale. La un rebalans
+                    # care doar ajusteaza o pozitie deja deschisa cele doua difera:
+                    # tinta poate fi $45 (peste minim) cand ordinul e doar $5 din
+                    # delta (sub minim). Fara aceasta verificare hartia ar arata
+                    # tranzactionabil un ordin pe care bursa l-ar respinge live -
+                    # exact ce acest executor exista sa scoata la iveala.
+                    try:
+                        client.normalize_amount(
+                            sym, abs(new_qty - old_qty), price=px, closing=False,
+                        )
+                    except ValueError as exc:
+                        excluded_min.append((sym, target_weight))
+                        if old_qty != 0.0:
+                            new_positions[sym] = Position(qty=old_qty, mark_price=px)
+                        log.info("  %s: %s", sym, exc)
+                        continue
 
                 try:
                     book = client.fetch_order_book(sym, limit=20)
