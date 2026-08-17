@@ -342,7 +342,22 @@ def main() -> int:
                    help="neutralizeaza beta pe (altcoins - BTC)")
     p.add_argument("--no-funding-cost", action="store_true",
                    help="dezactiveaza costul de funding (implicit: modelat)")
+    p.add_argument("--max-spread-bps", type=float, default=None,
+                   help="exclude candidatii cu spread peste acest prag "
+                        "(implicit: dezactivat, comportament neschimbat)")
+    p.add_argument("--out", default=None,
+                   help="scrie certificatul in alta cale, nu peste cea de "
+                        "productie. Calea de productie e determinata DOAR de "
+                        "factor/vol-target/funding-cost - orice alt flag "
+                        "(--max-spread-bps, --universe, --folds...) scrie "
+                        "peste acelasi certificat pe care poarta live il "
+                        "citeste, fara avertisment. Foloseste --out pentru "
+                        "orice rulare exploratorie care nu trebuie sa poata "
+                        "inchide sau redeschide poarta din productie.")
     args = p.parse_args()
+
+    if args.out:
+        print(f"\n  --out dat: scriu in {args.out}, NU in certificatul de productie.\n")
 
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
 
@@ -353,7 +368,7 @@ def main() -> int:
     client = BingXClient()
     print()
     print(f"Aleg cele mai lichide {args.universe} perpetuals...")
-    symbols = pick_universe(client, args.universe)
+    symbols = pick_universe(client, args.universe, max_spread_bps=args.max_spread_bps)
     print(f"Aduc {args.bars} lumanari {args.tf}...")
     panel = fetch_panel(client, symbols, args.tf, args.bars)
     if len(panel) < MIN_SYMBOLS_PER_BAR:
@@ -564,7 +579,9 @@ def main() -> int:
             hold=live_hold,
             vol_scale=live_vs,
         ),
-        path=xs_gate.path_for(args.factor, args.vol_target, not args.no_funding_cost),
+        path=args.out or xs_gate.path_for(
+            args.factor, args.vol_target, not args.no_funding_cost
+        ),
     )
 
     print()

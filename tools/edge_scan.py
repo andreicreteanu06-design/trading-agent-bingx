@@ -101,19 +101,47 @@ MIN_SYMBOLS_PER_BAR = 8
 # cel mai calm din lista. Lasat inauntru, XAUT primea 11.5% din carte - cea mai
 # mare pozitie long - si strategia devenea pe tacute un pariu pe aur, cu numele
 # de strategie pe altcoins.
+#
+# Enumerarea explicita a picat o data deja: filtrul original testa doar "USD in
+# base" (prinde NCCOGOLD2USD, NCSKASML2USD), dar BingX are 322 de simboluri cu
+# prefix NC - marfuri (NCCO*) si perechi valutare (NCFX*) - iar crucile fara USD
+# ca picior (NCFXGBP2CHF, NCFXEUR2CAD, NCFXGBP2JPY, ...) treceau nefiltrate.
+# Nu enumerate individual: sunt sute si numele lor se schimba. Prefixul NC e
+# markerul consecvent al intregii familii de produse sintetice non-crypto.
 TOKENIZED_RWA = frozenset({"XAUT", "PAXG", "XAU", "TSLA", "NVDA", "AAPL"})
+
+
+def is_synthetic_product(base: str) -> bool:
+    """True pentru orice baza care nu e o criptomoneda reala tranzactionabila."""
+    b = base.upper()
+    return b.startswith("NC") or "USD" in b or b in TOKENIZED_RWA
+
 
 # Pragul clasic de semnificatie, inainte de corectia pentru testare multipla.
 T_RAW = 2.0
 
 
 # --------------------------------------------------------------------- univers
-def pick_universe(client: BingXClient, size: int) -> list[str]:
+def pick_universe(
+    client: BingXClient,
+    size: int,
+    max_spread_bps: float | None = None,
+    pool: int | None = None,
+) -> list[str]:
     """
     Cele mai lichide `size` perpetuals USDT-M, dupa volumul pe 24h.
 
     Lichiditatea nu e un moft aici. Un factor care "merge" pe monede pe care
     nu poti intra fara sa misti pretul nu e un edge, e o iluzie de backtest.
+
+    `max_spread_bps`: daca e dat, candidatii sunt luati dintr-un pool mai larg
+    (implicit 2x `size`) dupa volum, apoi cei cu spread peste prag sunt
+    exclusi INAINTE de a lua top `size` dupa volum din ce ramane. Volumul mare
+    nu garanteaza spread mic - masurat: la acelasi rang de volum, spread-ul
+    variaza de la 0.1bps (ETH) la 67bps (STBL), vezi spread_scan.py. Bid/ask
+    vin din acelasi `fetch_tickers` folosit pentru volum, deci filtrarea nu
+    costa un apel de retea in plus. Implicit None (dezactivat) - schimba
+    universul folosit in productie doar daca e dat explicit.
     """
     client.load_markets()
     tickers = client._exchange.fetch_tickers()
@@ -123,16 +151,27 @@ def pick_universe(client: BingXClient, size: int) -> list[str]:
         if not sym.endswith("/USDT:USDT"):
             continue
         base = sym.split("/")[0]
-        # Produsele tokenizate pe actiuni si marfuri au "USD" in baza
-        # (NCCOGOLD2USD, NCSKASML2USD); aurul are nume proprii. Ambele afara.
-        if "USD" in base or base.upper() in TOKENIZED_RWA:
+        if is_synthetic_product(base):
             continue
         vol = t.get("quoteVolume") or 0.0
-        if vol > 0:
-            rows.append((sym, float(vol)))
+        if vol <= 0:
+            continue
+        spread_bps = None
+        bid, ask = t.get("bid"), t.get("ask")
+        if bid and ask and bid > 0 and ask > 0:
+            spread_bps = (ask - bid) / ((bid + ask) / 2) * 10_000
+        rows.append((sym, float(vol), spread_bps))
 
     rows.sort(key=lambda r: r[1], reverse=True)
-    return [sym for sym, _ in rows[:size]]
+
+    if max_spread_bps is None:
+        return [sym for sym, _, _ in rows[:size]]
+
+    candidates = rows[: (pool or size * 2)]
+    liquid = [(sym, vol) for sym, vol, sp in candidates
+              if sp is not None and sp <= max_spread_bps]
+    liquid.sort(key=lambda r: r[1], reverse=True)
+    return [sym for sym, _ in liquid[:size]]
 
 
 CACHE_DIR = "logs/ohlcv_cache"
