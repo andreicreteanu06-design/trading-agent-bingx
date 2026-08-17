@@ -32,6 +32,7 @@ import {
   api,
 } from "@/components/agent-dashboard";
 import { CandlestickChart, type Candle } from "@/components/ui/candlestick-chart";
+import { OscillatorChart } from "@/components/ui/oscillator-chart";
 import { cn } from "@/lib/utils";
 
 type PaperPosition = {
@@ -57,10 +58,19 @@ type PaperLastRun = {
   trades: PaperTrade[];
 };
 
+type PaperHorizon = {
+  hold_bars: number;
+  tf: string;
+  period_hours: number;
+  hours_left: number;
+  vol_scale: boolean | null;
+};
+
 type PaperBook = {
   exists: boolean;
   started_at?: string;
   last_updated_at?: string | null;
+  last_rebalance_at?: string | null;
   capital_usdt?: number;
   equity_usdt?: number;
   price_pnl_usdt?: number;
@@ -69,7 +79,15 @@ type PaperBook = {
   trade_count?: number;
   gross_exposure_usdt?: number;
   positions?: PaperPosition[];
+  horizon?: PaperHorizon | null;
   last_run?: PaperLastRun | null;
+};
+
+type Oscillators = {
+  rsi: (number | null)[];
+  macd_hist: (number | null)[];
+  stoch_k: (number | null)[];
+  stoch_d: (number | null)[];
 };
 
 type SymbolDetail = {
@@ -78,7 +96,24 @@ type SymbolDetail = {
   candles: Candle[];
   range_pos: number | null;
   vol_24: number | null;
+  oscillators?: Oscillators;
 };
+
+/** ultima valoare non-nula dintr-o serie de indicator (inceputul e perioada de incalzire) */
+function lastOf(values: (number | null)[] | undefined): number | null {
+  if (!values) return null;
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (values[i] != null) return values[i];
+  }
+  return null;
+}
+
+/** cate ore raman, scrise ca zile cand sunt multe */
+function humanHours(h: number) {
+  if (h <= 0) return "acum";
+  if (h < 24) return `${h.toFixed(0)}h`;
+  return `${(h / 24).toFixed(1)} zile`;
+}
 
 /** simbolul scurt, fara perechea de cotatie - mai usor de citit intr-un tabel dens */
 function shortSymbol(sym: string) {
@@ -235,7 +270,27 @@ export function PaperBookSection() {
                   label="Expunere bruta"
                   value={`${fmt(book.gross_exposure_usdt)} USDT`}
                 />
+                {book.horizon && (
+                  <Readout
+                    label="Urmatoarea rebalansare"
+                    value={humanHours(book.horizon.hours_left)}
+                  />
+                )}
               </div>
+
+              {/* Strategia nu are take-profit si nu are stop: iese cand expira
+                  perioada de detinere validata. Spus explicit, ca absenta unor
+                  tinte de pret sa nu para o scapare. */}
+              {book.horizon && (
+                <p className="mt-3 text-[13px] leading-relaxed text-mid">
+                  Cartea se rebalanseaza o data la {book.horizon.hold_bars} bare
+                  de {book.horizon.tf} ({(book.horizon.period_hours / 24).toFixed(0)} zile),
+                  dimensionare{" "}
+                  {book.horizon.vol_scale ? "invers volatilitatii" : "egala pe rang"} —
+                  exact cadenta la care a fost masurata. Nu exista take-profit sau
+                  stop-loss: pozitiile se inchid prin rebalansare, nu la un pret tinta.
+                </p>
+              )}
             </div>
 
             {/* disclaimer permanent, nu doar la prima vizita - cifrele de mai
@@ -422,7 +477,81 @@ export function PaperBookSection() {
                             ? "long"
                             : "short"}{" "}
                           in cartea curenta.
+                          {book.horizon &&
+                            ` Se reevalueaza peste ${humanHours(book.horizon.hours_left)}, la urmatoarea rebalansare.`}
                         </p>
+                      )}
+
+                      {detail.oscillators && (
+                        <div className="mt-5 border-t border-line pt-4">
+                          <div className="mb-3">
+                            <Label>Oscilatoare · context</Label>
+                            {/* Fara aceasta propozitie, trei grafice de oscilatoare
+                                langa o pozitie long se citesc automat ca motivul ei. */}
+                            <p className="mt-1.5 text-[13px] leading-relaxed text-lo">
+                              Strategia nu citeste acesti indicatori. Pozitia vine
+                              exclusiv din rangul lui range_pos. Analiza tehnica clasica
+                              a fost masurata pe acest proiect, pe 4111 semnale, cu o
+                              corelatie scor-rezultat de +0.026 — practic zero.
+                            </p>
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-3">
+                            <OscillatorChart
+                              label="RSI 14"
+                              values={detail.oscillators.rsi}
+                              lo={0}
+                              hi={100}
+                              bands={[
+                                { from: 70, to: 100 },
+                                { from: 0, to: 30 },
+                              ]}
+                              readout={
+                                lastOf(detail.oscillators.rsi) == null
+                                  ? NIL
+                                  : fmt(lastOf(detail.oscillators.rsi), 1)
+                              }
+                            />
+                            <OscillatorChart
+                              label="MACD histograma"
+                              values={detail.oscillators.macd_hist}
+                              histogram
+                              lo={-Math.max(
+                                ...detail.oscillators.macd_hist.map((v) =>
+                                  v == null ? 0 : Math.abs(v),
+                                ),
+                                1e-9,
+                              )}
+                              hi={Math.max(
+                                ...detail.oscillators.macd_hist.map((v) =>
+                                  v == null ? 0 : Math.abs(v),
+                                ),
+                                1e-9,
+                              )}
+                              readout={
+                                lastOf(detail.oscillators.macd_hist) == null
+                                  ? NIL
+                                  : fmtPrice(lastOf(detail.oscillators.macd_hist)!)
+                              }
+                            />
+                            <OscillatorChart
+                              label="Stoch RSI"
+                              values={detail.oscillators.stoch_k}
+                              second={detail.oscillators.stoch_d}
+                              lo={0}
+                              hi={100}
+                              bands={[
+                                { from: 80, to: 100 },
+                                { from: 0, to: 20 },
+                              ]}
+                              readout={
+                                lastOf(detail.oscillators.stoch_k) == null
+                                  ? NIL
+                                  : fmt(lastOf(detail.oscillators.stoch_k), 1)
+                              }
+                            />
+                          </div>
+                        </div>
                       )}
                     </>
                   )}
