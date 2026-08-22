@@ -195,10 +195,22 @@ while ($running) {
     }
 
     # --- Next.js production server ---
+    #
+    # Invocat direct prin node pe binarul local, NU prin npx.cmd. npx e un
+    # invelis care porneste serverul real ca proces COPIL si apoi iese singur
+    # imediat ce l-a lansat - handle-ul -PassThru pe care il primea $nextProc
+    # era deci invelisul, nu serverul. La cateva secunde dupa pornire,
+    # $nextProc.HasExited devenea true desi serverul real rula sanatos mai
+    # departe ca ORFAN, iar bucla de supraveghere pornea un next.js NOU la
+    # fiecare 10s, la nesfarsit - fara sa opreasca vreodata pe cel vechi, care
+    # ramanea sa serveasca pe port. Asa a supravietuit un proces din 17 august
+    # pana in 22 august, nevazut de niciun ciclu de reaping (acela ruleaza
+    # doar la pornirea launcherului, nu si intre timp). Cu node pe binarul
+    # local, procesul urmarit CHIAR e serverul.
     if (-not $nextProc -or $nextProc.HasExited) {
         Write-Log "Starting Next.js on ${NextHost}:$NextPort..."
         $nextProc = Start-ProcessWithLogging -Name "NextJS" `
-            -Exe "npx.cmd" -ArgLine "next start -H $NextHost -p $NextPort" `
+            -Exe "node" -ArgLine "node_modules\next\dist\bin\next start -H $NextHost -p $NextPort" `
             -WorkingDir (Join-Path $ScriptDir "web") -LogFile $NextLog
     }
 
