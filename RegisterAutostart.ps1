@@ -13,8 +13,8 @@
        Start-Process powershell -Verb RunAs -ArgumentList "-File RegisterAutostart.ps1"
 
 .NOTES
-    - Task runs whether user is logged on or not, with highest privileges (for binding 0.0.0.0).
-    - Uses the current user's account; password is NOT stored (uses S4U logon).
+    - Task runs at logon, in the user's own (standard, non-elevated) session.
+    - Uses the current user's account; password is NOT stored (Interactive logon).
     - To unregister later: Unregister-ScheduledTask -TaskName "BingXAgentDashboard" -Confirm:$false
 #>
 
@@ -44,7 +44,7 @@ if (-not $isAdmin) {
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$LauncherPath`""
 
-$trigger = New-ScheduledTaskTrigger -AtLogOn -Delay "00:02:00"
+$trigger = New-ScheduledTaskTrigger -AtLogOn -RandomDelay "00:02:00"
 
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
@@ -55,7 +55,30 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 3 `
     -RestartInterval (New-TimeSpan -Minutes 2)
 
-$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType S4U -RunLevel Highest
+# LogonType Interactive, nu S4U.
+#
+# S4U ("Service For User") ruleaza fara sesiune interactiva si fara credentiale
+# de retea. Testat aici: task-ul pornea powershell.exe, procesul chiar traia,
+# dar nu lansa niciun proces copil si nu scria niciun log - esec complet tacut,
+# in timp ce Task Scheduler raporta senin "Running".
+#
+# Interactive ruleaza in sesiunea utilizatorului logat. Compromisul: porneste
+# doar dupa ce te loghezi, nu si cand PC-ul e pornit fara utilizator. Pentru un
+# dashboard personal si un logger care aduna date cat lucrezi, e exact ce
+# trebuie - si, spre deosebire de S4U, chiar functioneaza.
+#
+# RunLevel Limited, nu Highest.
+#
+# "Highest" nu a fost niciodata necesar: legarea pe 0.0.0.0:3000 nu cere
+# privilegii de administrator pe Windows (doar porturile sub 1024 cer). Era
+# mostenit din varianta S4U originala si a devenit, testat direct, cauza
+# blocajului: task-ul pornea un powershell.exe elevat care ramanea in viata
+# ore intregi fara sa lanseze niciun proces copil si fara sa scrie niciun log -
+# vizibil in Task Scheduler ca "Running", invizibil oriunde altundeva, pentru
+# ca rula intr-un token cu integritate mai mare decat sesiunea normala. Un test
+# manual, neelevat, al aceluiasi RunAlways.ps1 a functionat perfect - dovada ca
+# elevarea era problema, nu solutia.
+$principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive -RunLevel Limited
 
 try {
     Register-ScheduledTask `
@@ -66,8 +89,8 @@ try {
         -Principal $principal `
         -Description "BingX Trading Agent: Python API + Next.js dashboard (production). Runs at logon, restarts on crash. Access via Tailscale." `
         -Force
-    Write-Host "✓ Task '$TaskName' registered successfully."
-    Write-Host "  Runs at user logon (2 min delay), hidden window."
+    Write-Host "[OK] Task '$TaskName' registered successfully."
+    Write-Host "  Runs at user logon (up to 2 min random delay), hidden window."
     Write-Host "  To test now: Start-ScheduledTask -TaskName '$TaskName'"
     Write-Host "  To view: Get-ScheduledTask -TaskName '$TaskName' | Get-ScheduledTaskInfo"
     Write-Host "  To remove: Unregister-ScheduledTask -TaskName '$TaskName' -Confirm:`$false"

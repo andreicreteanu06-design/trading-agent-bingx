@@ -1,12 +1,19 @@
 <#
 .SYNOPSIS
     Always-on launcher for BingX Trading Agent dashboard.
-    Starts Python API (loopback-only) + Next.js production server (0.0.0.0).
+    Starts Python API (loopback-only) + Next.js production server (0.0.0.0)
+    + the open-interest/funding logger (tools/oi_logger.py).
     Logs to files, restarts crashed processes, runs hidden from Task Scheduler.
 
 .DESCRIPTION
     This script is designed to be launched by Windows Task Scheduler at user logon.
-    It keeps both processes alive and writes stdout/stderr to rotating log files.
+    It keeps all three processes alive and writes stdout/stderr to rotating log files.
+
+    The OI logger is included here, not run separately, because it only earns
+    its keep if it never stops: a gap of a few days is a few days of data that
+    can never be recovered. Piggybacking on the launcher that's already
+    registered for autostart means it survives reboots without a second thing
+    to remember to start.
 
     Security: Python API binds ONLY to 127.0.0.1 (never exposed).
     Next.js binds to 0.0.0.0:3000 — accessible via Tailscale only.
@@ -20,6 +27,7 @@
 .LOGS
     - logs\python-api.log  : Python API stdout/stderr
     - logs\nextjs.log      : Next.js server stdout/stderr
+    - logs\oi-logger.log   : Open-interest/funding logger stdout/stderr
     - logs\launcher.log    : This launcher's events
 
 .EXIT CODES
@@ -42,104 +50,222 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $LogDir = Join-Path $ScriptDir "logs"
 $PythonLog = Join-Path $LogDir "python-api.log"
 $NextLog   = Join-Path $LogDir "nextjs.log"
+$OiLoggerLog = Join-Path $LogDir "oi-logger.log"
+$LiqLoggerLog = Join-Path $LogDir "liq-logger.log"
+$DepthLoggerLog = Join-Path $LogDir "depth-logger.log"
+$PaperExecLog = Join-Path $LogDir "paper-executor.log"
 $LauncherLog = Join-Path $LogDir "launcher.log"
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 function Write-Log {
+    <#
+        Writes to the log file only — deliberately NOT via Tee-Object.
+
+        Tee-Object also emits to the success stream, which needs somewhere to
+        go. Task Scheduler runs this with S4U logon and no console attached, so
+        that write throws, and with $ErrorActionPreference = "Stop" it killed
+        the launcher on its very first log line. The symptom was maddening: the
+        task reported "Running", yet no child process and no log file ever
+        appeared. Add-Content has no such dependency.
+    #>
     param([string]$Msg)
     $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$ts  $Msg" | Tee-Object -FilePath $LauncherLog -Append
+    try {
+        Add-Content -Path $LauncherLog -Value "$ts  $Msg" -Encoding UTF8 -ErrorAction Stop
+    } catch {
+        # Logging must never be the thing that takes the supervisor down.
+    }
 }
 
 function Start-ProcessWithLogging {
+    <#
+        Starts a child process with stdout/stderr redirected straight to files.
+
+        Note on the approach: an earlier version read the streams manually and
+        pumped them into Start-Job background jobs. That cannot work — Process
+        stream objects are not serializable across runspaces, so the jobs fail
+        the moment they receive them. Letting the OS write the files directly is
+        both simpler and more reliable, and it survives this script crashing.
+
+        Log files are truncated when a process restarts. That is intentional:
+        the restart history lives in launcher.log, and these files are meant to
+        show the CURRENT process's output, not an ever-growing archive. The OI
+        logger's actual data goes to logs\positioning.jsonl and is unaffected.
+
+        Pass Node tools as "npx.cmd", not "npx". On Windows `npx` resolves to
+        npx.ps1, a PowerShell script, and Start-Process refuses it with
+        "%1 is not a valid Win32 application" — the .cmd shim is a real
+        executable and is what actually launches.
+    #>
     param(
         [string]$Name,
         [string]$Exe,
-        [string]$Args,
+        # NOT named $Args: that collides with PowerShell's automatic $args
+        # variable, which under Set-StrictMode -Version Latest throws and takes
+        # the whole launcher down before any child process starts.
+        [string]$ArgLine,
         [string]$WorkingDir,
-        [string]$LogFile,
-        [ref]$ProcRef
+        [string]$LogFile
     )
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Exe
-    $psi.Arguments = $Args
-    $psi.WorkingDirectory = $WorkingDir
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-    $psi.StandardErrorEncoding  = [System.Text.Encoding]::UTF8
 
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $ProcRef.Value = $proc
+    $errFile = [System.IO.Path]::ChangeExtension($LogFile, ".err.log")
 
-    $outputReader = {
-        param($stream, $prefix)
-        while (-not $stream.EndOfStream) {
-            $line = $stream.ReadLine()
-            if ($line) {
-                $ts = Get-Date -Format "HH:mm:ss"
-                "$ts [$prefix] $line" | Out-File -FilePath $LogFile -Append -Encoding utf8
-            }
-        }
-    }
-
-    $stdoutJob = Start-Job -ScriptBlock $outputReader -ArgumentList $proc.StandardOutput, "OUT"
-    $stderrJob = Start-Job -ScriptBlock $outputReader -ArgumentList $proc.StandardError,  "ERR"
-
-    $proc.Exited.Register({
-        param($sender, $e)
-        Write-Log "$Name exited with code $($sender.ExitCode). Restarting in $RestartDelaySec sec..."
-        Start-Sleep -Seconds $RestartDelaySec
-        # restart logic handled by outer loop
-    })
+    $proc = Start-Process -FilePath $Exe `
+        -ArgumentList $ArgLine `
+        -WorkingDirectory $WorkingDir `
+        -RedirectStandardOutput $LogFile `
+        -RedirectStandardError $errFile `
+        -WindowStyle Hidden `
+        -PassThru
 
     return $proc
 }
 
-Write-Log "=== LAUNCHER STARTED ==="
-Write-Log "Working dir: $ScriptDir"
-Write-Log"Python: $ApiHost:$PythonPort | Next.js: $NextHost:$NextPort"
-
-$pythonProc = $null
-$nextProc   = $null
-$running = $true
-
-# ---- Clean shutdown on Ctrl+C or Task Scheduler termination ----
-$shutdown = {
-    Write-Log "Shutdown signal received. Stopping processes..."
-    $running = $false
-    if ($pythonProc -and -not $pythonProc.HasExited) { $pythonProc.Kill() }
-    if ($nextProc   -and -not $nextProc.HasExited)   { $nextProc.Kill() }
-    Write-Log "=== LAUNCHER STOPPED ==="
+# ---- Single-instance guard ----
+#
+# Doua instante simultane pornesc doua seturi de procese copil pe aceleasi
+# porturi: a doua nu poate lega portul, moare, reporneste, e omorata de
+# supervizorul primeia la urmatorul ciclu de 10s - Next.js repornind la
+# fiecare ~20s. S-a intamplat deja o data in productie. Un mutex global e
+# vizibil intre orice doua procese Windows, spre deosebire de un fisier PID
+# care poate ramane stale dupa un crash.
+$mutexCreated = $false
+$singleInstanceMutex = New-Object System.Threading.Mutex($true, "Global\BingXTradingAgent_RunAlways", [ref]$mutexCreated)
+if (-not $mutexCreated) {
+    Write-Log "O alta instanta a launcherului ruleaza deja - ies fara sa pornesc nimic."
     exit 0
 }
 
-[System.Console]::CancelKeyPress.Add($shutdown)
-Register-EngineEvent -SourceIdentifier "PowerShell.Exiting" -Action $shutdown | Out-Null
+# ---- Reap orphans from a previous launcher ----
+#
+# The mutex above guarantees we are the only launcher running. Therefore any
+# project child process alive right now is an orphan: it belonged to a launcher
+# that died without running its finally block — which is exactly what
+# Stop-Process -Force does. Left alone, they hold ports (Next.js EADDRINUSE) and
+# duplicate work (two OI loggers writing the same JSONL). Observed in practice.
+$orphanPatterns = 'app\.server|oi_logger|liq_logger|depth_logger|paper_executor|next start'
+$orphans = Get-CimInstance Win32_Process | Where-Object {
+    $_.ProcessId -ne $PID -and $_.CommandLine -match $orphanPatterns
+}
+foreach ($o in $orphans) {
+    Write-Log "Reaping orphan PID $($o.ProcessId) from a previous launcher"
+    try { Stop-Process -Id $o.ProcessId -Force -ErrorAction Stop } catch { }
+}
+if ($orphans) { Start-Sleep -Seconds 3 }  # lasa porturile sa se elibereze
+
+Write-Log "=== LAUNCHER STARTED ==="
+Write-Log "Working dir: $ScriptDir"
+Write-Log "Python: ${ApiHost}:$PythonPort | Next.js: ${NextHost}:$NextPort"
+
+$pythonProc = $null
+$nextProc   = $null
+$oiLoggerProc = $null
+$liqLoggerProc = $null
+$depthLoggerProc = $null
+$paperExecProc = $null
+$running = $true
+
+# ---- Clean shutdown ----
+#
+# Note: an earlier version called [System.Console]::CancelKeyPress.Add(...).
+# That throws — CancelKeyPress is an event, not a property, and PowerShell
+# cannot subscribe to it with .Add(). It killed the launcher before a single
+# process was started, which is why nothing ever ran. A try/finally around the
+# supervision loop covers every exit path (Ctrl+C, Task Scheduler stop, error)
+# without needing to hook console events at all.
+function Stop-Children {
+    Write-Log "Stopping child processes..."
+    foreach ($p in @($pythonProc, $nextProc, $oiLoggerProc, $liqLoggerProc, $depthLoggerProc, $paperExecProc)) {
+        if ($p -and -not $p.HasExited) {
+            try { $p.Kill() } catch { }
+        }
+    }
+}
 
 # ---- Main supervision loop ----
+try {
 while ($running) {
     # --- Python API ---
     if (-not $pythonProc -or $pythonProc.HasExited) {
-        Write-Log "Starting Python API on $ApiHost:$PythonPort..."
+        Write-Log "Starting Python API on ${ApiHost}:$PythonPort..."
         $pythonProc = Start-ProcessWithLogging -Name "PythonAPI" `
-            -Exe "python" -Args "-m app.server --host $ApiHost --port $PythonPort --no-browser" `
-            -WorkingDir $ScriptDir -LogFile $PythonLog -ProcRef ([ref]$pythonProc)
+            -Exe "python" -ArgLine "-m app.server --host $ApiHost --port $PythonPort --no-browser" `
+            -WorkingDir $ScriptDir -LogFile $PythonLog
     }
 
     # --- Next.js production server ---
+    #
+    # Invocat direct prin node pe binarul local, NU prin npx.cmd. npx e un
+    # invelis care porneste serverul real ca proces COPIL si apoi iese singur
+    # imediat ce l-a lansat - handle-ul -PassThru pe care il primea $nextProc
+    # era deci invelisul, nu serverul. La cateva secunde dupa pornire,
+    # $nextProc.HasExited devenea true desi serverul real rula sanatos mai
+    # departe ca ORFAN, iar bucla de supraveghere pornea un next.js NOU la
+    # fiecare 10s, la nesfarsit - fara sa opreasca vreodata pe cel vechi, care
+    # ramanea sa serveasca pe port. Asa a supravietuit un proces din 17 august
+    # pana in 22 august, nevazut de niciun ciclu de reaping (acela ruleaza
+    # doar la pornirea launcherului, nu si intre timp). Cu node pe binarul
+    # local, procesul urmarit CHIAR e serverul.
     if (-not $nextProc -or $nextProc.HasExited) {
-        Write-Log "Starting Next.js on $NextHost:$NextPort..."
+        Write-Log "Starting Next.js on ${NextHost}:$NextPort..."
         $nextProc = Start-ProcessWithLogging -Name "NextJS" `
-            -Exe "npx" -Args "next start -H $NextHost -p $NextPort" `
-            -WorkingDir (Join-Path $ScriptDir "web") -LogFile $NextLog -ProcRef ([ref]$nextProc)
+            -Exe "node" -ArgLine "node_modules\next\dist\bin\next start -H $NextHost -p $NextPort" `
+            -WorkingDir (Join-Path $ScriptDir "web") -LogFile $NextLog
+    }
+
+    # --- Open-interest / funding logger ---
+    # Reads once an hour internally (its own --loop), so a 10s check here just
+    # confirms the process itself is still alive, not that it just fetched.
+    if (-not $oiLoggerProc -or $oiLoggerProc.HasExited) {
+        Write-Log "Starting OI/funding logger..."
+        $oiLoggerProc = Start-ProcessWithLogging -Name "OiLogger" `
+            -Exe "python" -ArgLine "tools\oi_logger.py --loop" `
+            -WorkingDir $ScriptDir -LogFile $OiLoggerLog
+    }
+
+    # --- Forced-liquidation logger ---
+    # Same reasoning as the OI logger: liquidation history cannot be bought,
+    # only recorded, so it has to survive reboots without anyone remembering it.
+    # This one holds a WebSocket open rather than polling, so a dropped process
+    # is a hard gap in the stream — the 10s liveness check matters more here.
+    if (-not $liqLoggerProc -or $liqLoggerProc.HasExited) {
+        Write-Log "Starting liquidation logger..."
+        $liqLoggerProc = Start-ProcessWithLogging -Name "LiqLogger" `
+            -Exe "python" -ArgLine "tools\liq_logger.py" `
+            -WorkingDir $ScriptDir -LogFile $LiqLoggerLog
+    }
+
+    # --- Order book depth logger (BTC/ETH/SOL, for scalping edge research) ---
+    # Same reasoning as the liquidation logger: depth history cannot be bought,
+    # only recorded, so it has to survive reboots without anyone remembering it.
+    if (-not $depthLoggerProc -or $depthLoggerProc.HasExited) {
+        Write-Log "Starting depth logger..."
+        $depthLoggerProc = Start-ProcessWithLogging -Name "DepthLogger" `
+            -Exe "python" -ArgLine "tools\depth_logger.py" `
+            -WorkingDir $ScriptDir -LogFile $DepthLoggerLog
+    }
+
+    # --- Paper trading executor (no real orders — see execution/paper_executor.py) ---
+    # Assumes logs/paper_state.json already exists (bootstrapped manually with
+    # --capital once); --loop alone won't create it. If state is ever reset,
+    # someone has to run --capital by hand once before this picks it back up.
+    if (-not $paperExecProc -or $paperExecProc.HasExited) {
+        Write-Log "Starting paper executor..."
+        $paperExecProc = Start-ProcessWithLogging -Name "PaperExecutor" `
+            -Exe "python" -ArgLine "execution\paper_executor.py --loop" `
+            -WorkingDir $ScriptDir -LogFile $PaperExecLog
     }
 
     # Wait a bit before checking again
     Start-Sleep -Seconds 10
 }
-
-Write-Log "=== LAUNCHER STOPPED ==="
+}
+finally {
+    Stop-Children
+    if ($singleInstanceMutex) {
+        try { $singleInstanceMutex.ReleaseMutex() } catch { }
+        $singleInstanceMutex.Dispose()
+    }
+    Write-Log "=== LAUNCHER STOPPED ==="
+}

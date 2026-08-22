@@ -12,13 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  motion,
-  useMotionValue,
-  useReducedMotion,
-  useSpring,
-  useTransform,
-} from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
   AlertTriangle,
@@ -32,7 +26,11 @@ import {
 } from "lucide-react";
 
 import { AnimateDigits } from "@/components/ui/animate-digits";
+import { ExecLog, type LogLine } from "@/components/ui/exec-log";
+import { OutcomeDonut, type OutcomeSlice } from "@/components/ui/outcome-donut";
+import { PaperBookSection } from "@/components/paper-book";
 import { RiskEnvelope } from "@/components/risk-envelope";
+import { ScoreChart, type ScorePoint } from "@/components/ui/score-chart";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -179,9 +177,9 @@ const order: Record<SymbolResult["status"], number> = {
 /* ------------------------------------------------------------------ */
 
 /** null readout, ca pe un instrument fizic */
-const NIL = "--";
+export const NIL = "--";
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     cache: "no-store",
@@ -191,7 +189,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-function fmt(n: number | null | undefined, digits = 2) {
+export function fmt(n: number | null | undefined, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return NIL;
   return new Intl.NumberFormat("ro-RO", {
     minimumFractionDigits: digits,
@@ -199,14 +197,14 @@ function fmt(n: number | null | undefined, digits = 2) {
   }).format(n);
 }
 
-function fmtPrice(n: number | null | undefined) {
+export function fmtPrice(n: number | null | undefined) {
   if (n === null || n === undefined || Number.isNaN(n)) return NIL;
   const abs = Math.abs(n);
   const digits = abs >= 1000 ? 1 : abs >= 10 ? 2 : abs >= 1 ? 3 : 5;
   return fmt(n, digits);
 }
 
-function localTime(iso?: string) {
+export function localTime(iso?: string) {
   if (!iso) return NIL;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return NIL;
@@ -222,70 +220,36 @@ function localTime(iso?: string) {
 /* primitive de material                                               */
 /* ------------------------------------------------------------------ */
 
-function Panel({
+/**
+ * Un panou e o piesa de carcasa (§12): muchia de sus prinde lumina, restul sta.
+ *
+ * Nu are varianta "interactiva". Varianta veche ridica panoul si plimba un
+ * shimmer dupa cursor, ceea ce incalca §3: bugetul de miscare merge pe date,
+ * nu pe chrome. Pe deasupra, apela hook-uri conditionat (`if (interactive)`),
+ * ceea ce e o incalcare a regulilor hook-urilor si se strica la prima
+ * schimbare de `prefers-reduced-motion`.
+ */
+export function Panel({
   children,
   className,
-  interactive = false,
 }: {
   children: React.ReactNode;
   className?: string;
-  interactive?: boolean;
 }) {
-  const reduceMotion = useReducedMotion();
-  const hoverLift = useSpring(useMotionValue(1), { stiffness: 180, damping: 20 });
-
-  if (interactive && !reduceMotion) {
-    // cursor-tracked shimmer for interactive panels (motion values, not state)
-    const shimmerX = useMotionValue(0);
-    const shimmerY = useMotionValue(0);
-    const shimmerBg = useTransform([shimmerX, shimmerY], (vals: number[]) => {
-      const [x, y] = vals;
-      return `radial-gradient(ellipse at ${x * 100}% ${y * 100}%, rgb(255 255 255 / 0.06) 0%, transparent 55%)`;
-    });
-    const panelTransform = useTransform(hoverLift, (v: number) => `scale(${v}) translateY(${-(v - 1) * 40}px)`);
-    const panelZIndex = useTransform(hoverLift, (v: number) => Math.round(v * 1000));
-
-    return (
-      <motion.section
-        className={cn("panel relative", className)}
-        style={{
-          transform: panelTransform,
-          zIndex: panelZIndex,
-        }}
-        onMouseEnter={() => hoverLift.set(1.008)}
-        onMouseLeave={() => hoverLift.set(1)}
-        onMouseMove={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          shimmerX.set((e.clientX - r.left) / r.width);
-          shimmerY.set((e.clientY - r.top) / r.height);
-        }}
-      >
-        {/* shimmer specular care urmareste cursorul - computed inline */}
-        <motion.div
-          className="pointer-events-none absolute inset-0 rounded-[var(--r-panel)]"
-          style={{ background: shimmerBg }}
-        />
-        {/* top edge highlight - lumina de sus */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
-        {children}
-      </motion.section>
-    );
-  }
-
   return (
-    <section className={cn("panel", className)}>
+    <section className={cn("panel relative", className)}>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
       {children}
     </section>
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
+export function Label({ children }: { children: React.ReactNode }) {
   return <span className="label">{children}</span>;
 }
 
 /** celula de citire: eticheta mica, valoare mono */
-function Readout({
+export function Readout({
   label,
   value,
   tone = "hi",
@@ -316,19 +280,17 @@ function Readout({
   );
 }
 
-/** Citire mare care respira cand valoarea se schimba + puls discret live. */
-function LiveMetric({
+/** Citire mare care se aprinde scurt cand valoarea chiar s-a schimbat (§9). */
+export function LiveMetric({
   label,
   value,
   helper,
   tone,
-  live = false,
 }: {
   label: string;
   value: string;
   helper: string;
   tone?: "hi" | "long" | "short";
-  live?: boolean;
 }) {
   const previous = useRef(value);
   const [flash, setFlash] = useState<"up" | "down" | undefined>();
@@ -354,34 +316,17 @@ function LiveMetric({
     previous.current = value;
   }, [value]);
 
-  // subtle live pulse (scale + opacity) — only when NOT reduced motion
-  const pulse = useSpring(useMotionValue(0), { stiffness: 120, damping: 30, mass: 0.8 });
-  const pulseScale = useTransform(pulse, (v) => `scale(${1 + v})`);
-  const pulseOpacity = useTransform(pulse, (v) => 1 - Math.abs(v) * 0.5);
-  useEffect(() => {
-    if (reduceMotion || !live) return;
-    let alive = true;
-    let frame = 0;
-    const animate = () => {
-      if (!alive) return;
-      // slow breathing pulse: ~2.5s period, subtle (0.5% scale)
-      pulse.set(Math.sin(frame * 0.008) * 0.005);
-      frame++;
-      requestAnimationFrame(animate);
-    };
-    requestAnimationFrame(animate);
-    return () => { alive = false; };
-  }, [pulse, reduceMotion, live]);
-
-  const style = reduceMotion || !live ? undefined : { transform: pulseScale, opacity: pulseOpacity };
+  // Nicio respiratie de fundal. O celula care pulseaza non-stop e miscare
+  // decorativa pe chrome (§3, §9) si arde un rAF permanent pe o pagina care sta
+  // deschisa toata ziua. Singura miscare permisa aici e flash-ul de la §9: se
+  // aprinde doar cand cifra chiar s-a schimbat.
 
   return (
     <motion.div
       className="cell relative overflow-hidden px-3 py-2.5"
       data-flash={flash}
-      animate={flash ? { scale: [1, 1.018, 1] } : undefined}
+      animate={flash && !reduceMotion ? { scale: [1, 1.018, 1] } : undefined}
       transition={{ duration: 0.22, ease: EASE_SNAP }}
-      style={style}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
       <Label>{label}</Label>
@@ -439,7 +384,7 @@ function SidePill({ side }: { side: "long" | "short" }) {
   );
 }
 
-function Notice({
+export function Notice({
   tone,
   title,
   text,
@@ -480,7 +425,7 @@ function Notice({
   );
 }
 
-function Empty({
+export function Empty({
   icon: Icon,
   text,
 }: {
@@ -495,7 +440,7 @@ function Empty({
   );
 }
 
-function SectionHead({
+export function SectionHead({
   title,
   meta,
 }: {
@@ -598,20 +543,11 @@ function SignalCard({ result, index }: { result: SymbolResult; index: number }) 
     },
   };
 
-  // cursor-tracked shimmer for approved cards
-  const shimmerX = useMotionValue(0);
-  const shimmerY = useMotionValue(0);
-  const shine = useTransform([shimmerX, shimmerY], (vals: number[]) => {
-    const [x, y] = vals;
-    return `radial-gradient(ellipse at ${x * 100}% ${y * 100}%, rgb(255 255 255 / 0.04) 0%, transparent 50%)`;
-  });
-
   if (!approved) {
     return (
       <motion.div
         {...enter}
         className="cell flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3"
-        whileHover={{ y: -1, transition: { duration: 0.15, ease: EASE_SNAP } }}
       >
         <span className="font-mono text-[13px] text-hi">{result.symbol}</span>
         <StatusBadge status={result.status} />
@@ -626,33 +562,10 @@ function SignalCard({ result, index }: { result: SymbolResult; index: number }) 
 
   const up = trade.side === "long";
 
-  // subtle hover lift for approved cards
-  const hoverLift = useSpring(useMotionValue(1), { stiffness: 220, damping: 25 });
-  const hoverTransform = useTransform(hoverLift, (v) => `scale(${v})`);
-
   return (
-    <motion.article
-      {...enter}
-      className="panel overflow-hidden relative"
-      style={{ transform: hoverTransform }}
-      onMouseEnter={() => hoverLift.set(1.012)}
-      onMouseLeave={() => hoverLift.set(1)}
-      onMouseMove={reduceMotion ? undefined : (e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        shimmerX.set((e.clientX - r.left) / r.width);
-        shimmerY.set((e.clientY - r.top) / r.height);
-      }}
-    >
+    <motion.article {...enter} className="panel relative overflow-hidden">
       {/* muchia de directie. culoarea poarta sens de piata, deci e permisa */}
       <div className={cn("h-px w-full", up ? "bg-long" : "bg-short")} />
-
-      {/* cursor-tracked specular highlight */}
-      {!reduceMotion && (
-        <motion.div
-          className="pointer-events-none absolute inset-0"
-          style={{ background: shine }}
-        />
-      )}
 
       <div className="p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -751,40 +664,16 @@ export function AgentDashboard() {
   const [connected, setConnected] = useState(false);
   const [startingScan, setStartingScan] = useState(false);
 
-  /* ------------------------------------------------------------------ */
-  /* mișcare controlată: header parallax + scan ambience (§9)           */
-  /* ------------------------------------------------------------------ */
-  const headerRef = useRef<HTMLElement>(null);
-  const px = useMotionValue(0);
-  const py = useMotionValue(0);
-  const spring = { stiffness: 180, damping: 22, mass: 0.7 };
-  const headerRotateY = useSpring(useTransform(px, [-0.5, 0.5], [-3, 3]), spring);
-  const headerRotateX = useSpring(useTransform(py, [-0.5, 0.5], [2, -2]), spring);
-  // Build transform string with useTransform on individual values
-  const headerTransformX = useTransform(headerRotateX, (rx: number) => `rotateX(${rx}deg)`);
-  const headerTransformY = useTransform(headerRotateY, (ry: number) => `rotateY(${ry}deg)`);
-  const headerTransform = useTransform([headerTransformX, headerTransformY], (vals: string[]) => {
-    const [x, y] = vals;
-    return `perspective(800px) ${x} ${y}`;
-  });
-
-  // progress bar ambience când scanează
-  const scanProgress = useMotionValue(0);
-  useEffect(() => {
-    if (!status?.scanning) {
-      scanProgress.set(0);
-      return;
-    }
-    let alive = true;
-    const animate = () => {
-      if (!alive) return;
-      const current = scanProgress.get();
-      scanProgress.set(current >= 1 ? 0 : current + 0.0015);
-      requestAnimationFrame(animate);
-    };
-    requestAnimationFrame(animate);
-    return () => { alive = false; };
-  }, [status?.scanning, scanProgress]);
+  /*
+   * Aici era parallax pe header si un rAF care umplea o bara de progres.
+   * Amandoua au picat: header-ul e `position: sticky`, iar un `transform` pe un
+   * element sticky ii rupe pozitionarea in unele motoare; si oricum §9 spune
+   * explicit "header, panouri, chrome - fara animatie". Bara de progres nu era
+   * randata nicaieri, deci era un rAF care rula in gol.
+   *
+   * Bugetul de 3D si de cursor sta intreg pe Risk Envelope (§7), unde miscarea
+   * chiar reprezinta date.
+   */
 
   const loadScan = useCallback(async () => {
     try {
@@ -825,8 +714,6 @@ export function AgentDashboard() {
     }
   }, []);
 
-  // track previous scanning state to detect completion
-  const wasScanningRef = useRef(false);
   const [scanCompleteFlash, setScanCompleteFlash] = useState(false);
 
   /**
@@ -841,19 +728,34 @@ export function AgentDashboard() {
   useEffect(() => {
     let alive = true;
     let timer: number | undefined;
+    let flashTimer: number | undefined;
+    let first = true;
 
     async function tick() {
       if (!alive) return;
+
+      // Prima trecere aduce tot ce e nevoie ca sa se deseneze consola. Sta aici,
+      // nu in corpul efectului, ca sa nu porneasca un al doilea render sincron
+      // imediat dupa montare (react-hooks/set-state-in-effect).
+      if (first) {
+        first = false;
+        await Promise.all([loadScan(), loadHistory(), loadBacktests()]);
+        if (!alive) return;
+      }
 
       const wasScanning = scanningRef.current;
       const nowScanning = await loadStatus();
       scanningRef.current = nowScanning;
 
-      // detect scan completion: was scanning, now not scanning
+      // scanarea tocmai s-a incheiat: aprindem confirmarea, dar NU iesim din
+      // tick. Varianta veche facea `return` aici si nu mai reprograma
+      // niciodata timer-ul, deci consola ingheta dupa prima scanare terminata.
       if (wasScanning && !nowScanning) {
         setScanCompleteFlash(true);
-        const t = window.setTimeout(() => setScanCompleteFlash(false), 600);
-        return () => window.clearTimeout(t);
+        if (flashTimer !== undefined) window.clearTimeout(flashTimer);
+        flashTimer = window.setTimeout(() => {
+          if (alive) setScanCompleteFlash(false);
+        }, 600);
       }
 
       // cat timp scaneaza, si inca o data imediat dupa ce s-a terminat
@@ -866,14 +768,12 @@ export function AgentDashboard() {
       timer = window.setTimeout(tick, nowScanning ? 3000 : 12000);
     }
 
-    loadScan();
-    loadHistory();
-    loadBacktests();
-    tick();
+    void tick();
 
     return () => {
       alive = false;
       if (timer !== undefined) window.clearTimeout(timer);
+      if (flashTimer !== undefined) window.clearTimeout(flashTimer);
     };
   }, [loadStatus, loadScan, loadHistory, loadBacktests]);
 
@@ -911,6 +811,63 @@ export function AgentDashboard() {
     [scan],
   );
 
+  /*
+   * Cele trei serii de mai jos alimenteaza blocul de instrumente. Toate sunt
+   * derivate din raspunsurile reale ale API-ului Python. Daca API-ul nu a
+   * intors nimic, componenta respectiva nu se randeaza - nu se completeaza cu
+   * date sintetice.
+   */
+
+  /** ultimele semnale cu scor, in ordine cronologica (istoricul vine invers) */
+  const scorePoints = useMemo<ScorePoint[]>(() => {
+    return history
+      .filter((h) => h.signal && Number.isFinite(h.signal.score))
+      .slice(0, 40)
+      .reverse()
+      .map((h) => ({
+        ts: h.ts,
+        score: h.signal!.score,
+        side: h.signal!.side,
+        symbol: h.signal!.symbol,
+        status: h.status,
+      }));
+  }, [history]);
+
+  /** repartitia ultimei scanari pe deciziile agentului */
+  const outcome = useMemo(() => {
+    const rows = scan?.results ?? [];
+    const count = (s: SymbolResult["status"]) =>
+      rows.filter((r) => r.status === s).length;
+
+    const slices: OutcomeSlice[] = [
+      { label: "Aprobate", count: count("approved"), color: "var(--long)" },
+      { label: "Respinse de risc", count: count("rejected"), color: "var(--short)" },
+      { label: "Oprite de Claude", count: count("claude_skip"), color: "var(--warn)" },
+      { label: "Fara setup", count: count("no_setup"), color: "var(--text-lo)" },
+      { label: "Sarite", count: count("skipped"), color: "var(--line-lit)" },
+      { label: "Erori", count: count("error"), color: "var(--short)" },
+    ];
+
+    return { slices, total: rows.length };
+  }, [scan]);
+
+  /** jurnal de executie: rezultatele ultimei scanari, cele decisive primele */
+  const logLines = useMemo<LogLine[]>(() => {
+    const stamp = scan?.finished_at ?? scan?.started_at ?? "";
+    return [...(scan?.results ?? [])]
+      .sort((a, b) => order[a.status] - order[b.status])
+      .map((r) => ({
+        ts: stamp,
+        kind: r.status,
+        symbol: r.symbol,
+        text:
+          r.detail ||
+          (r.trade
+            ? `intrare ${fmtPrice(r.trade.entry)} · stop ${fmtPrice(r.trade.stop_loss)} · ${fmt(r.trade.leverage, 1)}x`
+            : "fara detalii"),
+      }));
+  }, [scan]);
+
   const ks = status?.kill_switch;
   const drawdown =
     ks && ks.peak_equity > 0
@@ -923,18 +880,7 @@ export function AgentDashboard() {
     <main className="min-h-dvh">
       {/* ============ rail de sus (§6.1) ============ */}
       {/* fundal opac, nu sticla: un rail e o piesa de carcasa, nu un geam (§12) */}
-      <motion.header
-        ref={headerRef}
-        onPointerMove={(e) => {
-          const r = headerRef.current?.getBoundingClientRect();
-          if (!r) return;
-          px.set((e.clientX - r.left) / r.width - 0.5);
-          py.set((e.clientY - r.top) / r.height - 0.5);
-        }}
-        onPointerLeave={() => { px.set(0); py.set(0); }}
-        className="sticky top-0 z-30 border-b border-line bg-void"
-        style={{ transform: headerTransform, transformStyle: "preserve-3d" }}
-      >
+      <header className="sticky top-0 z-30 border-b border-line bg-void">
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div>
             <h1 className="text-[15px] font-medium tracking-tight text-hi">
@@ -980,41 +926,43 @@ export function AgentDashboard() {
           </div>
         </div>
 
-        {/* scan ambience: progres real, nu decor (§9) */}
+        {/*
+          Singura miscare permisa pe rail: linia care arata ca scanarea chiar
+          ruleaza (§9). `transformOrigin: left` - fara el bara ar creste din
+          centru in ambele directii, ceea ce nu inseamna "progres".
+        */}
         {status?.scanning && (
           <motion.div
-            className="absolute bottom-0 left-0 h-px w-full pointer-events-none"
-            style={{ background: "linear-gradient(90deg, var(--long), var(--warn))" }}
+            className="pointer-events-none absolute bottom-0 left-0 h-px w-full"
+            style={{
+              background: "linear-gradient(90deg, var(--long), var(--warn))",
+              transformOrigin: "left",
+            }}
             animate={{ scaleX: [0, 1] }}
             transition={{ duration: 2.8, ease: "linear", repeat: Infinity }}
           />
         )}
 
-        {/* ambient connection pulse - slow breathing when online, subtle red when offline */}
-        <motion.div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: connected
-              ? "radial-gradient(ellipse 80% 50% at 50% 0%, rgb(46 230 168 / 0.035) 0%, transparent 70%)"
-              : "radial-gradient(ellipse 80% 50% at 50% 0%, rgb(255 77 94 / 0.045) 0%, transparent 70%)",
-          }}
-          animate={connected ? { opacity: [0.6, 1, 0.6] } : { opacity: [0.7, 1, 0.7] }}
-          transition={connected ? { duration: 6, repeat: Infinity, ease: "easeInOut" } : { duration: 3, repeat: Infinity, ease: "easeInOut" }}
-        />
-
-        {/* scan completion flash: data-driven motion, not chrome */}
+        {/* scanarea s-a incheiat: o confirmare scurta, pe date, nu pe chrome */}
         {scanCompleteFlash && (
           <motion.div
-            className="absolute inset-0 pointer-events-none bg-white/10"
+            className="pointer-events-none absolute inset-0 bg-white/10"
             initial={{ opacity: 0 }}
             animate={{ opacity: [0, 0.12, 0] }}
             transition={{ duration: 0.4, ease: EASE_SNAP }}
           />
         )}
+      </header>
 
-        {/* ============ rail de telemetrie: pulse per simbol (§9) ============ */}
+      <div className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6">
+        {/*
+          Rail-ul de telemetrie si Risk Envelope au iesit din <header>: erau
+          lipite intr-un bloc sticky care ocupa aproape jumatate de ecran pe
+          laptop. Un rail sticky trebuie sa ramana subtire; instrumentele curg
+          cu pagina.
+        */}
         {status && (
-          <div className="mx-auto max-w-[1400px] border-t border-line px-4 py-2 sm:px-6">
+          <div className="border-b border-line py-2.5">
             <TelemetryRail
               symbols={status.symbols}
               results={scan?.results ?? []}
@@ -1023,38 +971,89 @@ export function AgentDashboard() {
           </div>
         )}
 
-        {/* ============ semnatura: Risk Envelope (§7) ============ */}
-        {ks && (
-          <div className="mx-auto max-w-[1400px] border-t border-line px-4 py-4 sm:px-6">
-            <RiskEnvelope
-              allowed={ks.allowed}
-              statusLine={ks.status_line || ks.reason || "limite in parametri"}
-              rings={[
-                {
-                  label: "Trades azi",
-                  value: ks.trades_today,
-                  max: ks.max_trades,
-                  readout: `${ks.trades_today}/${ks.max_trades}`,
-                },
-                {
-                  label: "Pierderi cons.",
-                  value: ks.consecutive_losses,
-                  max: ks.max_consecutive,
-                  readout: `${ks.consecutive_losses}/${ks.max_consecutive}`,
-                },
-                {
-                  label: "Drawdown",
-                  value: drawdown,
-                  max: maxDrawdown,
-                  readout: `${fmt(drawdown * 100, 1)}/${fmt(maxDrawdown * 100, 0)}%`,
-                },
-              ]}
-            />
-          </div>
-        )}
-      </motion.header>
+        {/*
+          ============ bloc de comanda ============
 
-      <div className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6">
+          Grila de tip bento, inspirata din exportul Stitch, dar cu ierarhia
+          consolei: Risk Envelope (§7, singurul obiect 3D din pagina) tine
+          coloana mare, iar repartitia scanarii sta langa el. Sub ele, curba de
+          scoruri si jurnalul de executie - amandoua pe date reale.
+
+          Celulele care nu au date nu se randeaza deloc. Un panou gol care
+          spune "--" peste tot e mai rau decat absenta lui.
+        */}
+        <div className="mt-5 grid gap-4 lg:grid-cols-12">
+          {ks && (
+            <Panel className={cn("p-4 sm:p-5", outcome.total ? "lg:col-span-7" : "lg:col-span-12")}>
+              <RiskEnvelope
+                allowed={ks.allowed}
+                statusLine={ks.status_line || ks.reason || "limite in parametri"}
+                rings={[
+                  {
+                    label: "Trades azi",
+                    value: ks.trades_today,
+                    max: ks.max_trades,
+                    readout: `${ks.trades_today}/${ks.max_trades}`,
+                  },
+                  {
+                    label: "Pierderi cons.",
+                    value: ks.consecutive_losses,
+                    max: ks.max_consecutive,
+                    readout: `${ks.consecutive_losses}/${ks.max_consecutive}`,
+                  },
+                  {
+                    label: "Drawdown",
+                    value: drawdown,
+                    max: maxDrawdown,
+                    readout: `${fmt(drawdown * 100, 1)}/${fmt(maxDrawdown * 100, 0)}%`,
+                  },
+                ]}
+              />
+            </Panel>
+          )}
+
+          {!!outcome.total && (
+            <Panel className={cn("p-4 sm:p-5", ks ? "lg:col-span-5" : "lg:col-span-12")}>
+              <Label>Repartitia ultimei scanari</Label>
+              <div className="mt-4">
+                <OutcomeDonut
+                  slices={outcome.slices}
+                  total={outcome.total}
+                  caption={`${approvedCount} din ${outcome.total} au trecut de risk engine.`}
+                />
+              </div>
+            </Panel>
+          )}
+
+          {scorePoints.length > 1 && (
+            <Panel className="p-4 sm:p-5 lg:col-span-7">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <Label>Scorurile semnalelor din jurnal</Label>
+                <span className="num font-mono text-[11px] tabular-nums text-lo">
+                  cronologic · scor brut, nu profit
+                </span>
+              </div>
+              <div className="mt-4">
+                <ScoreChart points={scorePoints} />
+              </div>
+            </Panel>
+          )}
+
+          {!!logLines.length && (
+            <Panel className={cn("p-4 sm:p-5", scorePoints.length > 1 ? "lg:col-span-5" : "lg:col-span-12")}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <Label>Jurnal de executie</Label>
+                <span className="num font-mono text-[11px] tabular-nums text-lo">
+                  {localTime(scan?.finished_at)}
+                </span>
+              </div>
+              <div className="mt-3">
+                <ExecLog lines={logLines} />
+              </div>
+            </Panel>
+          )}
+        </div>
+
         {/* ============ alerte ============ */}
         <div className="mt-5 space-y-2">
           {status?.last_error && (
@@ -1082,6 +1081,15 @@ export function AgentDashboard() {
             />
           )}
         </div>
+
+        {/* ============ hartie cross-sectionala ============ */}
+        {/*
+          Strategie separata de scanner-ul BTC/ETH/SOL de mai jos - aceea are
+          expectanta negativa masurata, asta a trecut validare walk-forward.
+          Statiaza deasupra sectiunii vechi tocmai ca sa nu se confunde: e
+          sistemul cu edge real, nu instrumentele de risc pentru cel fara.
+        */}
+        <PaperBookSection />
 
         {/* ============ semnale (§6.2) ============ */}
         <SectionHead
@@ -1125,7 +1133,7 @@ export function AgentDashboard() {
         {/* ============ instrumente de risc + stare sistem (§6.3) ============ */}
         <SectionHead title="Instrumente" />
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <Panel className="p-4 sm:p-5" interactive>
+          <Panel className="p-4 sm:p-5">
             <Label>Capital si risc</Label>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <LiveMetric
@@ -1137,14 +1145,12 @@ export function AgentDashboard() {
                     : "sold real din BingX"
                 }
                 tone="hi"
-                live={Boolean(status?.equity)}
               />
               <LiveMetric
                 label="PnL azi"
                 value={ks ? fmt(ks.pnl_today) : NIL}
                 helper="USDT realizat"
                 tone={ks && ks.pnl_today !== null && ks.pnl_today > 0 ? "long" : ks && ks.pnl_today !== null && ks.pnl_today < 0 ? "short" : "hi"}
-                live={Boolean(ks?.pnl_today)}
               />
               <Readout
                 label="Risc / trade"
@@ -1165,7 +1171,7 @@ export function AgentDashboard() {
             </div>
           </Panel>
 
-          <Panel className="p-4 sm:p-5" interactive>
+          <Panel className="p-4 sm:p-5">
             <Label>Stare sistem</Label>
             {status ? (
               <>

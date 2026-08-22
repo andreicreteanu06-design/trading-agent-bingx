@@ -235,6 +235,131 @@ Alte lucruri pe care le vei descoperi altfel pe pielea ta:
 
 ---
 
+## Strategia cross-secțională pe altcoins (cea care a trecut validarea)
+
+Strategia de mai sus, pe serie de timp, a fost abandonată după ce măsurătorile
+au arătat că nu are edge. Ce a urmat e o axă complet diferită, și singura din
+proiect care a trecut vreodată o validare walk-forward.
+
+**Ideea.** În loc de „urcă BTC?", întrebarea e „care dintre cele 40 de monede o
+duce mai bine decât celelalte?". Se deține permanent o carte long-short,
+dollar-neutrală, rebalansată o dată la câteva zile. Randamentul vine din
+diferența dintre picioare, nu dintr-o tranzacție individuală — deci nu există
+„semnale" în sensul clasic, și nu contează dacă piața urcă sau coboară.
+
+Factorul e `range_pos`: unde se află moneda în intervalul ultimelor 72 de
+lumânări. Long pe cele aproape de maxime, short pe cele aproape de minime.
+
+```bash
+python tools\edge_scan.py --tf 4h --universe 50
+```
+Măsoară puterea predictivă a 16 factori, cu corecție Newey-West și prag
+Bonferroni. Rulează asta înainte de a inventa orice strategie nouă.
+
+```bash
+python backtest\validate_xs.py --factor range_pos --folds 8
+```
+Validare walk-forward: parametrii se aleg pe date anterioare, se măsoară pe date
+de după. Scrie certificatul pe care îl citește poarta.
+
+```bash
+python tools\xs_signals.py --capital 500 --commit
+```
+Cartea curentă și — mai important — ce s-a schimbat față de ultima rulare. Doar
+diferența se tranzacționează; restul pozițiilor rămân pe loc.
+
+### Ce s-a măsurat, și ce NU acoperă
+
+Rezultate out-of-sample pe ~1.2 ani, cu costuri taker pe ambele capete. Tabelul
+de mai jos e istoricul procesului de validare — fiecare rând a fost cel mai
+bun rezultat cunoscut la momentul lui, dar e depășit de următorul:
+
+| rulare | anualizat | Sharpe | maxDD | t (NW) | folduri+ |
+|---|---|---|---|---|---|
+| 40 simboluri, 5 folduri | +35.5% | 1.77 | −16.2% | 2.01 | 4/5 |
+| 29 simboluri, 5 folduri | +39.7% | 2.03 | −14.1% | 1.95 | 3/5 |
+| 40 simboluri, 8 folduri | +42.7% | 2.10 | −15.4% | 2.61 | 6/8 |
+| + fix rebalansare (index relativ la fold) | +62.2% | 2.35 | −13.1% | 2.52 | 7/8 |
+| **+ funding modelat corect (curent)** | **+57.0%** | **2.33** | **−14.0%** | **2.49** | **5/8** |
+
+**Ultimul rând e cel valid** — certificatul din `logs/validation_xs_range_pos.json`.
+Funding-ul real scade randamentul cu ~2.3 puncte procentuale pe an față de
+varianta fără cost de funding (fold-urile pozitive scad de la 7/8 la 5/8 pe
+acest set de date, pentru că grila de parametri se re-alege ținând cont și de
+costul de funding — nu doar randamentul e mai mic, ci alegerile de configurare
+se schimbă). Real, dar sub cel mai rău scenariu posibil, și validarea tot trece.
+
+Beta pe (altcoins − BTC) sub 0.15 peste tot, deci nu e un pariu pe altseason
+deghizat — verificat explicit, pentru că familia low-vol chiar era.
+
+**Limitele, care contează la fel de mult:**
+
+- `t` oscilează în jurul lui 2.0-2.5 în funcție de universul și granularitatea
+  foldurilor. E marginal, nu concludent.
+- Doar ~1.2 ani out-of-sample. Cel mai prost fold a fost **−32.8% pe două luni**.
+- Universul e ales după volumul de azi, deci monedele care au murit între timp
+  lipsesc din test.
+- Factorul a fost găsit căutând prin ~64 de teste. Umbra testării multiple
+  acoperă toată căutarea, nu doar testul final.
+- Funding-ul se citește de la Binance (istoric adânc), nu de la BingX (unde se
+  execută de fapt, dar cu doar ~67 de zile de istoric public) — aceeași
+  convenție ca la `tools/funding_edge.py`: semnalul e un fenomen de piață,
+  executabil pe orice venue. ~1-2 simboluri din univers nu au istoric pe
+  Binance și intră cu cost de funding zero, marcat explicit în log.
+
+Poarta din `strategy/xs_gate.py` refuză să marcheze cartea drept
+tranzacționabilă dacă ultima validare nu a trecut toate cele patru condiții.
+Când `t` iese sub 2.0, poarta se închide singură — și așa trebuie.
+
+---
+
+## Date care nu se pot cumpăra retroactiv
+
+Trei serii nu există în niciun istoric public și nu se pot recupera mai târziu.
+Se pot doar înregistra, de acum înainte. Ambele loggere pornesc singure prin
+`RunAlways.ps1`, tocmai ca să nu depindă de cineva care își aduce aminte.
+
+```bash
+python tools\oi_logger.py --stats
+```
+Open interest (BingX + Binance), funding, preț **și adâncimea cărții de ordine**
+— cât notional USDT stă în așteptare la ±0.1% și ±0.5% de mid, plus spread-ul.
+Orar, pe cele mai lichide 40 de perpetuals, adică exact universul pe care
+trăiește strategia cross-secțională. Adâncimea răspunde la întrebarea de
+capacitate: câți bani poate absorbi cartea înainte ca slippage-ul să mănânce
+randamentul.
+
+```bash
+python tools\liq_logger.py --stats
+```
+Lichidări forțate reale, în timp real, agregate în găleți de un minut per
+simbol, cu preț mediu ponderat și cel mai mare eveniment din fiecare găleată.
+
+### De ce nu harta de lichidări de pe Coinglass
+
+Nu e o măsurătoare, e un model: estimează unde s-ar afla pozițiile cu levier
+presupunând o distribuție de levier peste open interest. Metodologia e
+proprietară, produsul e în spatele unui paywall, iar graficul e randat pe canvas
+— deci nu există serie istorică brută pe care să se poată rula o validare
+walk-forward. Un semnal care nu poate fi măsurat nu are ce căuta într-un agent
+care tranzacționează.
+
+Lichidările efective sunt publice și gratuite, și sunt exact materia primă pe
+care o agregă și Coinglass — doar că observate, nu presupuse.
+
+**Sursa e OKX, nu Binance.** `fstream.binance.com` nu livrează niciun cadru din
+rețeaua de aici: handshake-ul reușește, apoi tăcere. Verificat cu un stream de
+control aglomerat (`btcusdt@aggTrade`, zero mesaje în 90s) în timp ce Binance
+SPOT, Bybit și OKX răspund normal — deci nu e nici codul, nici sandbox-ul. REST-ul
+pe futures Binance merge în continuare și e folosit mai departe de `oi_logger`.
+
+OKX e o felie din piață, nu piața întreagă. Pentru întrebarea care contează aici
+(care monede văd lichidări disproporționate **față de celelalte**) un eșantion
+consecvent e suficient, fiindcă semnalul e cross-secțional și compară ranguri.
+Nu folosi cifrele ca estimare a lichidărilor totale.
+
+---
+
 ## Ce urmează, dacă vrei să continui
 
 - Backtester peste `logs/signals.jsonl` + date istorice

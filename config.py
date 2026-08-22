@@ -139,6 +139,193 @@ class StrategyConfig:
     min_setup_score: float = 60.0
 
 
+# ------------------------------------------------- strategie intraday (<= 1h)
+@dataclass(frozen=True)
+class ScalpConfig:
+    """
+    Profilul pentru pozitii tinute sub o ora.
+
+    De ce exista separat de StrategyConfig: acela descrie o strategie de trend
+    pe 1h/4h, unde o tranzactie respira 1-2 zile. Nu e o chestiune de parametri
+    diferiti, ci de aritmetica diferita.
+
+    Aritmetica, pe scurt, pentru ca ea dicteaza tot restul fisierului:
+    un TP la 2R cu stop de 1.8xATR cere o miscare de 3.6xATR. Pe 1h, unde o
+    lumanare are un range mediu de ~1 ATR, asta nu se intampla intr-o ora.
+    Pe 5m, insa, 60 de minute inseamna 12 lumanari, iar daca stopul e stramt
+    (sub structura unui sweep, nu la 1.8xATR), 2R devine o distanta de ~0.5%
+    pe BTC - o miscare absolut banala in 12 lumanari.
+
+    Concluzia care conteaza: orizontul scurt nu se obtine grabind o strategie
+    lenta, ci strangand stopul. R-ul mare vine din numitor, nu din numarator.
+    """
+
+    # --- timeframe-uri
+    # Contextul (directie permisa, niveluri de lichiditate majore).
+    context_tf: str = "1h"
+    # Executia. 5m: 1h = 12 lumanari. 3m: 1h = 20 lumanari, dar mai mult zgomot.
+    exec_tf: str = "5m"
+    # Cate lumanari de executie citim (600 x 5m = ~2 zile, acopera EMA200 + VWAP).
+    exec_candles: int = 600
+    context_candles: int = 300
+
+    # Bugetul de timp, in lumanari de executie. 36 x 5m = 3 ore.
+    #
+    # A fost 12 (o ora). Masuratoarea din tools\feasibility.py a aratat de ce
+    # nu functiona: distanta pe care o poate parcurge pretul creste cu sqrt(timp)
+    # in timp ce costurile raman fixe, deci bugetul scurt strange R:R-ul din
+    # ambele parti. Rata de succes ceruta doar pentru break-even pe BTC 5m:
+    #   60 min -> 45.2%   |   120 min -> 34.2%   |   240 min -> 25.5%
+    # Trecerea la 3 ore este cea mai ieftina imbunatatire din tot proiectul:
+    # nu cere nicio idee noua de trading, doar rabdare.
+    max_bars_in_trade: int = 36
+
+    # --- indicatori de baza (necesari pentru indicators.enrich)
+    ema_fast: int = 21
+    ema_slow: int = 200
+    rsi_period: int = 14
+    atr_period: int = 14
+    adx_period: int = 14
+    volume_ma_period: int = 20
+    swing_lookback: int = 20
+
+    # --- oscilatori
+    stoch_period: int = 14
+    stoch_k: int = 3
+    stoch_d: int = 3
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    cci_period: int = 20
+    williams_period: int = 14
+    mfi_period: int = 14
+    bb_period: int = 20
+    bb_mult: float = 2.0
+    kc_mult: float = 1.5
+    vwap_reset: str = "D"
+
+    # --- detectia sweep-ului de lichiditate
+    # Cate lumanari inapoi cautam nivelul care va fi maturat.
+    liquidity_lookback: int = 60
+    # Confirmarea pivotului: left/right lumanari de fiecare parte.
+    pivot_left: int = 3
+    pivot_right: int = 3
+    # In cate lumanari de la depasire trebuie sa se produca reclaim-ul.
+    # Peste 3, nu mai e o capcana - e o schimbare reala de directie.
+    reclaim_within: int = 3
+    # Cat de mult trebuie sa depaseasca wick-ul nivelul, in ATR. Sub pragul asta
+    # e doar atingere, nu maturare de stopuri.
+    min_sweep_atr: float = 0.15
+    # Volumul lumanarii de sweep fata de medie. Un stop-run adevarat are volum:
+    # se executa ordinele stop ale altora. Fara volum, e doar drift.
+    min_sweep_volume: float = 1.4
+
+    # --- setup 2: squeeze breakout (Bollinger in Keltner, apoi expansiune)
+    #
+    # Singurul setup de CONTINUARE din cele trei. Cand deviatia standard se
+    # strange sub ATR, piata a incetat sa se deplaseze desi inca se agita:
+    # energie acumulata fara directie. Eliberarea da miscarea rapida de care
+    # are nevoie un orizont scurt. Directia nu vine din squeeze - vine din
+    # lumanarea care il rupe.
+    squeeze_enabled: bool = True
+    # Cate lumanari trebuie sa fi stat comprimat. Sub 6, e doar o pauza.
+    min_squeeze_bars: int = 6
+    # Volumul lumanarii care rupe, fata de medie. Un breakout fara volum este
+    # cea mai scumpa capcana din analiza tehnica.
+    min_breakout_volume: float = 1.5
+    # Cat trebuie sa depaseasca inchiderea banda Bollinger, in ATR.
+    min_breakout_atr: float = 0.20
+
+    # --- setup 3: reversie la VWAP
+    #
+    # Cand pretul se intinde mult peste/sub pretul mediu ponderat cu volum al
+    # sesiunii, iar oscilatorii arata epuizare, VWAP-ul functioneaza ca magnet.
+    # Rata de succes mai mare decat celelalte doua, dar R:R mai mic - tinta e
+    # VWAP-ul, nu un multiplu arbitrar de R.
+    vwap_reversion_enabled: bool = True
+    # De la cate deviatii standard consideram ca merita fadeuit.
+    vwap_z_entry: float = 2.2
+    # Nu fadeuim intr-un trend puternic pe contextul mare: acolo "intins" poate
+    # sta intins ore intregi. Peste acest ADX pe context, setup-ul se dezactiveaza.
+    vwap_max_context_adx: float = 30.0
+
+    # --- praguri oscilatori
+    stoch_oversold: float = 20.0
+    stoch_overbought: float = 80.0
+    mfi_oversold: float = 25.0
+    mfi_overbought: float = 75.0
+    williams_oversold: float = -80.0
+    williams_overbought: float = -20.0
+    # Cat de intins fata de VWAP consideram "exces" (in deviatii standard).
+    vwap_z_stretch: float = 1.8
+
+    # --- divergente
+    div_lookback: int = 80
+    div_min_bars_apart: int = 4
+    div_max_bars_since: int = 6
+    div_min_osc_gap: float = 2.0
+
+    # --- scor si calitate
+    # Scor minim (0-100) pentru a propune setup-ul.
+    min_setup_score: float = 65.0
+    # R:R minim la TP1. Sub asta nu merita comisionul.
+    min_risk_reward: float = 2.0
+    # Buffer peste extremul sweep-ului pentru stop, in ATR.
+    stop_buffer_atr: float = 0.25
+    # Podea absoluta pentru stop, calibrata pe date reale: ATR-ul median pe 5m
+    # este ~0.08% pe BTC si ~0.10% pe SOL, deci un stop de 1.5xATR inseamna
+    # 0.12-0.15%. O podea de 0.3% ar respinge fix setup-urile normale.
+    # Verifica singur cu: python tools\feasibility.py
+    min_stop_distance_pct: float = 0.001  # 0.1%
+    max_stop_distance_pct: float = 0.006  # 0.6%
+
+    # Tinte, ca multiplu de R BRUT. Par mari fata de un TP clasic la 2R, si
+    # trebuie sa fie: pe 5m costurile consuma ~1R (vezi max_cost_r), deci 4R
+    # brut inseamna ~3R net.
+    #
+    # Verificarea distantei, la buget de 36 de lumanari: excursia asteptata este
+    # ATR x sqrt(36) = 6 x ATR = 0.47% pe BTC. TP1 la 4R cu stop de 1.5xATR cade
+    # tot la ~0.47%. Adica tinta este exact la marginea a ce face pretul in mod
+    # normal in 3 ore - nu ceva ce trebuie sa speram.
+    tp_r_multiples: tuple[float, ...] = (4.0, 7.0)
+
+    # --- costuri: numarul care decide daca strategia are voie sa existe
+    #
+    # Costurile sunt exprimate in PRET, iar R-ul unui scalp este mic in pret.
+    # Raportul dintre ele este cea mai importanta cifra a strategiei:
+    #
+    #     cost_R = cost_dus_intors / distanta_stop
+    #
+    # Cu ordine market pe ambele capete (0.05% fee + 0.05% slippage x2 = 0.2%)
+    # si un stop de 0.3%, cost_R = 0.67. Adica pe un trade in care risti 1R,
+    # dai doua treimi din el brokerului inainte sa se miste pretul. Nicio rata
+    # de succes nu repara asta.
+    #
+    # De aceea intrarea este LIMIT (post-only) la nivelul recucerit: platesti
+    # maker, nu taker, si nu platesti slippage la intrare. Setup-ul o cere
+    # oricum - vrei retestul nivelului, nu sa alergi dupa pret.
+    entry_order_type: str = "limit_post_only"
+    # Cat de departe de nivelul recucerit punem limita, in ATR. 0 = exact pe
+    # nivel. Prea aproape de pretul curent si ordinul se executa ca taker.
+    limit_offset_atr: float = 0.10
+    # Daca limita nu se umple in atatea lumanari, setup-ul a expirat.
+    limit_valid_bars: int = 3
+
+    # Plafon de avarie, NU filtrul principal.
+    #
+    # Prima versiune a acestui fisier avea aici 0.25, pornind de la intuitia ca
+    # un cost peste un sfert din R e inacceptabil. Masuratoarea pe date reale
+    # (tools\feasibility.py) a aratat ca intuitia era gresita: pe 5m cost_R este
+    # ~1.0 si asta e in regula, pentru ca R:R-ul brut accesibil in 12 lumanari
+    # este ~3.5, deci raman ~2.5R net. Poarta la 0.25 respingea exact
+    # setup-urile viabile.
+    #
+    # Filtrul care conteaza este `min_risk_reward`, aplicat pe R:R-ul NET.
+    # Asta ramane doar ca sa prinda cazurile absurde - stop atat de stramt incat
+    # comisionul depaseste riscul asumat.
+    max_cost_r: float = 1.2
+
+
 # ------------------------------------------------------------- regim de piata
 @dataclass(frozen=True)
 class RegimeConfig:
@@ -208,6 +395,7 @@ class AppConfig:
     market: MarketConfig = field(default_factory=MarketConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
+    scalp: ScalpConfig = field(default_factory=ScalpConfig)
     regime: RegimeConfig = field(default_factory=RegimeConfig)
     circuit: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
 
@@ -228,6 +416,10 @@ class AppConfig:
     # si in trade manager. Fee-urile sunt "taker" (agresor); daca folosesti
     # limite post-only, sunt mai mici.
     taker_fee: float = 0.0005  # 0.05%
+    # Comisionul cand ESTI lichiditate (ordin limit post-only care nu ia din
+    # carte). Pe BingX perpetual e ~0.02%. Diferenta pare mica, dar pentru un
+    # scalp cu stop de 0.5% inseamna 0.06R vs 0.15R doar din fee-ul de intrare.
+    maker_fee: float = 0.0002  # 0.02%
     # Slippage estimat la intrare/iesire (o valoare per side). Pentru majors,
     # pe timeframe 1h+, ~0.05% e conservator. Pentru altcoin-uri mici, dubleaza.
     slippage: float = 0.0005  # 0.05%

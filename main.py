@@ -305,10 +305,19 @@ def main() -> int:
     args = parser.parse_args()
 
     if cfg.TRADING_MODE != "paper":
-        log.warning(
-            "TRADING_MODE=%s, dar aceasta versiune nu trimite ordine in niciun caz.",
+        # Respingere, nu avertisment. Un avertisment intr-un log pe care nimeni
+        # nu-l citeste lasa impresia ca TRADING_MODE=live face ceva aici - nu
+        # face, si strategia asta are expectanta negativa masurata (-0.331R pe
+        # 73 de tranzactii). Executia reala traieste exclusiv in
+        # execution/live_executor.py, pentru cartea cross-sectionala validata.
+        log.error(
+            "TRADING_MODE=%s nu e acceptat de main.py. Aceasta cale genereaza "
+            "doar semnale pentru strategia BTC/ETH/SOL, care are expectanta "
+            "negativa masurata. Pentru executie reala foloseste "
+            "execution/live_executor.py. Porneste cu TRADING_MODE=paper.",
             cfg.TRADING_MODE,
         )
+        return 2
 
     symbols = args.symbol or list(C.market.symbols)
 

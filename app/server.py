@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import socket
 import sys
@@ -26,12 +27,20 @@ import time
 import webbrowser
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
 from core.scanner import Scanner, read_signal_history
+from execution.paper_executor import (
+    load_last_ledger_entry,
+    load_state as load_paper_state,
+    rebalance_due,
+)
+from strategy import indicators, xs_gate
+from strategy.oscillators import macd, stoch_rsi
+from tools.edge_scan import compute_features
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s", datefmt="%H:%M:%S"
@@ -223,6 +232,26 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"reports": _load_backtests()})
             return
 
+        if path == "/api/paper":
+            self._json(200, _paper_book())
+            return
+
+        if path == "/api/paper/detail":
+            qs = parse_qs(urlparse(self.path).query)
+            symbol = (qs.get("symbol") or [""])[0]
+            if not symbol:
+                self._json(400, {"error": "lipseste parametrul symbol"})
+                return
+            tf = (qs.get("tf") or ["4h"])[0]
+            try:
+                self._json(200, _symbol_detail(symbol, tf, 120))
+            except Exception as exc:  # noqa: BLE001
+                # Un simbol delistat intre timp sau o retea care pica nu are
+                # voie sa darame consola - doar sectiunea de detaliu ramane goala.
+                log.warning("Detaliu esuat pentru %s: %s", symbol, exc)
+                self._json(502, {"error": str(exc)})
+            return
+
         self._json(404, {"error": "not found"})
 
     # ------------------------------------------------------------------ POST
@@ -308,6 +337,126 @@ def _load_backtests() -> list[dict]:
         data.pop("trades", None)  # prea mare pentru dashboard
         out.append(data)
     return out
+
+
+def _paper_book() -> dict:
+    """
+    Cartea de hartie a strategiei cross-sectionale, pentru dashboard.
+
+    Strategie separata de scanner-ul de mai sus (BTC/ETH/SOL, expectanta
+    negativa) - cea validata walk-forward, rulata de
+    execution/paper_executor.py fara ordine reale. Vezi README, sectiunea
+    "Strategia cross-sectionala".
+    """
+    state = load_paper_state()
+    if state is None:
+        return {"exists": False}
+
+    positions = [
+        {
+            "symbol": sym,
+            "side": "long" if pos.qty > 0 else "short",
+            "notional_usdt": abs(pos.qty * pos.mark_price),
+            "mark_price": pos.mark_price,
+        }
+        for sym, pos in state.positions.items()
+    ]
+    positions.sort(key=lambda p: -p["notional_usdt"])
+
+    # Orizontul pana la urmatoarea rebalansare. Inlocuieste "zonele de TP" pe
+    # care aceasta strategie pur si simplu nu le are: nu iese la un pret tinta,
+    # iese cand expira perioada de detinere validata.
+    cert = xs_gate.load_certificate(xs_gate.path_for("range_pos"))
+    horizon: dict | None = None
+    if cert and cert.hold:
+        _, hours_left = rebalance_due(
+            state.last_rebalance_at, datetime.now(timezone.utc), cert.tf, cert.hold
+        )
+        horizon = {
+            "hold_bars": cert.hold,
+            "tf": cert.tf,
+            "period_hours": cert.hold * {"1h": 1, "4h": 4, "1d": 24}.get(cert.tf, 4),
+            "hours_left": round(hours_left, 1),
+            "vol_scale": cert.vol_scale,
+        }
+
+    return {
+        "exists": True,
+        "started_at": state.started_at,
+        "last_updated_at": state.last_updated_at,
+        "last_rebalance_at": state.last_rebalance_at,
+        "capital_usdt": state.capital_usdt,
+        "equity_usdt": state.equity_usdt,
+        "price_pnl_usdt": state.price_pnl_usdt,
+        "funding_paid_usdt": state.funding_paid_usdt,
+        "fees_paid_usdt": state.fees_paid_usdt,
+        "trade_count": state.trade_count,
+        "gross_exposure_usdt": sum(p["notional_usdt"] for p in positions),
+        "positions": positions,
+        "horizon": horizon,
+        "last_run": load_last_ledger_entry(),
+    }
+
+
+def _symbol_detail(symbol: str, tf: str, limit: int) -> dict:
+    """
+    Lumanari recente plus valoarea RAW a factorului range_pos pentru un singur
+    simbol - fara sa aduca tot universul.
+
+    range_pos = (close - minim72) / (maxim72 - minim72) se calculeaza doar din
+    istoricul propriu al monedei (tools/edge_scan.py::compute_features), deci
+    nu are nevoie de sectiunea transversala. Rangul EXACT fata de celelalte
+    monede ar cere tot universul (minute, nu "pe loc") - de aceea dashboard-ul
+    arata rangul in cartea curenta (deja incarcata) langa aceasta valoare, nu
+    un rang recalculat aici.
+
+    OSCILATORII (rsi, macd_hist, stoch_k/d) sunt CONTEXT, nu motiv. Strategia
+    cross-sectionala nu ii citeste niciodata - cartea se face exclusiv din
+    rangul lui range_pos. Sunt aici pentru ca sunt utili cand te uiti la un
+    grafic, si atat. Analiza tehnica clasica a fost deja masurata pe acest
+    proiect, pe 4111 semnale: corelatie scor-rezultat +0.026, adica zero.
+    Interfata trebuie sa spuna asta explicit, ca sa nu fie citite drept cauza.
+    """
+    df = SERVICE.scanner.client.fetch_ohlcv(symbol, tf, limit)
+    feats = compute_features(df)
+    last = feats.iloc[-1]
+
+    close = df["close"]
+    rsi_s = indicators.rsi(close, 14)
+    macd_df = macd(close)
+    stoch_df = stoch_rsi(close)
+
+    def _clean(v) -> float | None:
+        f = float(v)
+        return None if math.isnan(f) else f
+
+    def _series(s) -> list[float | None]:
+        return [_clean(v) for v in s]
+
+    candles = [
+        {
+            "ts": int(row.timestamp),
+            "open": float(row.open),
+            "high": float(row.high),
+            "low": float(row.low),
+            "close": float(row.close),
+        }
+        for row in df.itertuples()
+    ]
+
+    return {
+        "symbol": symbol,
+        "tf": tf,
+        "candles": candles,
+        "range_pos": _clean(last["range_pos"]),
+        "vol_24": _clean(last["vol_24"]),
+        "oscillators": {
+            "rsi": _series(rsi_s),
+            "macd_hist": _series(macd_df["macd_hist"]),
+            "stoch_k": _series(stoch_df["stoch_k"]),
+            "stoch_d": _series(stoch_df["stoch_d"]),
+        },
+    }
 
 
 def _local_ip() -> str:

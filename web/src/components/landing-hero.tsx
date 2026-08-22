@@ -5,47 +5,55 @@
  * Video background with robot animation, animated text, crypto logos, interactive charts
  */
 
-import { motion, useMotionValue, useTransform, useSpring } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import {
+  motion,
+  useMotionValue,
+  useTransform,
+  useSpring,
+  useReducedMotion,
+} from "framer-motion";
+import { useEffect } from "react";
 import { ArrowRight, Sparkles, TrendingUp, Cpu, Shield } from "lucide-react";
 
-// BTC, ETH, SOL logos from 21st.dev
+/*
+  Marcile BTC/ETH/SOL, luate din svgl.app dar servite local din `public/logos/`.
+  Inainte erau incarcate direct de pe svgl.app la runtime: o pagina altfel complet
+  statica ajungea sa depinda de un CDN tert, iar daca acela cade sau isi schimba
+  caile, stripul se randeaza ca trei casute sparte.
+*/
 const CRYPTO_LOGOS = {
-  BTC: "https://svgl.app/library/btc.svg",
-  ETH: "https://svgl.app/library/eth.svg",
-  SOL: "https://svgl.app/library/sol.svg",
+  BTC: "/logos/btc.svg",
+  ETH: "/logos/eth.svg",
+  SOL: "/logos/sol.svg",
 };
 
 export function LandingHero() {
+  const reduceMotion = useReducedMotion();
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
-  const [mounted, setMounted] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
 
   const springX = useSpring(mouseX, { stiffness: 100, damping: 12 });
   const springY = useSpring(mouseY, { stiffness: 100, damping: 12 });
 
-  const rotateX = useTransform(springY, [-0.5, 0.5], [8, -8]);
-  const rotateY = useTransform(springX, [-0.5, 0.5], [-12, 12]);
+  // Parallax pe stratul de adancime. Valorile trebuie legate prin useTransform,
+  // nu citite cu .get() intr-un obiect de stil: un `.get()` se evalueaza o
+  // singura data, la randare, si dupa aia nu se mai misca nimic. Asta era
+  // motivul pentru care parallax-ul "exista" in cod dar nu facea nimic.
+  const depthX = useTransform(springX, [-0.5, 0.5], [18, -18]);
+  const depthY = useTransform(springY, [-0.5, 0.5], [12, -12]);
 
   useEffect(() => {
-    setMounted(true);
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  useEffect(() => {
+    if (reduceMotion) return;
     const handleMove = (e: MouseEvent) => {
       mouseX.set(e.clientX / window.innerWidth - 0.5);
       mouseY.set(e.clientY / window.innerHeight - 0.5);
     };
-    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mousemove", handleMove, { passive: true });
     return () => window.removeEventListener("mousemove", handleMove);
-  }, [mouseX, mouseY]);
+  }, [mouseX, mouseY, reduceMotion]);
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[var(--surface-void)]">
+    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[var(--surface-void)]">
       {/* Video Background - Robot Animation */}
       <div className="absolute inset-0 z-0" aria-hidden="true">
         <video
@@ -74,8 +82,12 @@ export function LandingHero() {
         />
       </div>
 
-      {/* Floating geometric shapes for depth */}
-      <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden="true">
+      {/* Strat de adancime: cercurile se deplaseaza cu cursorul (parallax real) */}
+      <motion.div
+        className="pointer-events-none absolute inset-0 z-0"
+        aria-hidden="true"
+        style={reduceMotion ? undefined : { x: depthX, y: depthY }}
+      >
         {[1, 2, 3, 4, 5].map((i) => (
           <motion.div
             key={i}
@@ -87,31 +99,25 @@ export function LandingHero() {
               left: 5 + i * 18 + "%",
               opacity: 0.15 - i * 0.02,
             }}
-            animate={{
-              translateY: [0, -20, 0],
-              rotate: [0, 180, 360],
-            }}
+            animate={reduceMotion ? undefined : { rotate: [0, 360] }}
             transition={{
-              duration: 20 + i * 5,
+              duration: 40 + i * 10,
               repeat: Infinity,
               ease: "linear",
             }}
           />
         ))}
-      </div>
+      </motion.div>
 
       {/* Main Content */}
-      <main className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 pt-20 pb-16">
-        {/* Animated Headline */}
-        <div
-          className="text-center max-w-5xl"
-          style={{
-            transform: mounted ? "none" : "translateY(40px)",
-            opacity: mounted ? 1 : 0,
-            transition: "transform 1.2s cubic-bezier(0.23, 1, 0.32, 1), opacity 1s cubic-bezier(0.23, 1, 0.32, 1)",
-            transitionDelay: "0.2s",
-          }}
-        >
+      <main className="relative z-10 flex min-h-[100dvh] flex-col items-center justify-center px-6 pt-20 pb-16">
+        {/*
+          Blocul de titlu. Aici era un gate pe `useState(mounted)` setat dintr-un
+          efect, doar ca sa porneasca o tranzitie CSS la montare. Fiecare copil de
+          mai jos are deja `initial`/`animate`, deci wrapper-ul dubla intrarea si,
+          pe deasupra, forta un al doilea render sincron imediat dupa montare.
+        */}
+        <div className="text-center max-w-5xl">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -217,15 +223,24 @@ export function LandingHero() {
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.5, delay: 1.1 + Object.keys(CRYPTO_LOGOS).indexOf(symbol) * 0.1 }}
-                className="group cursor-pointer"
+                className="group"
                 whileHover={{ scale: 1.15, y: -4 }}
               >
                 <div className="relative w-16 h-16 md:w-20 md:h-20 flex items-center justify-center">
+                  {/*
+                    `next/image` nu optimizeaza SVG, deci `<img>` e alegerea
+                    corecta aici. Latimea si inaltimea sunt declarate ca sa nu
+                    sara layout-ul (CLS). Glow-ul verde de dinainte a picat:
+                    verdele e culoare cu sens de piata (§4), nu decor pe un logo.
+                  */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={url}
                     alt={`${symbol} logo`}
-                    className="w-full h-full object-contain filter drop-shadow-[0_0_20px_rgba(46,230,168,0.3)]"
-                    style={{ transition: "filter 300ms ease" }}
+                    width={80}
+                    height={80}
+                    loading="lazy"
+                    className="w-full h-full object-contain"
                   />
                 </div>
                 <span className="label mt-3 text-center block tracking-wider" style={{ color: "var(--text-lo)" }}>
@@ -244,60 +259,66 @@ export function LandingHero() {
           transition={{ duration: 0.8, delay: 1.4, ease: [0.23, 1, 0.32, 1] }}
           className="mt-28 w-full max-w-5xl"
         >
-          <div className="grid md:grid-cols-3 gap-6">
+          {/*
+            Aici erau "Win Rate 67.3%", "Profit Factor 2.41" si "Max Drawdown
+            8.7%", cu sparkline-uri generate din Math.random(). Cifrele erau
+            inventate si contraziceau direct verdictul propriu al consolei
+            ("expectanta e negativa, nu tranzactiona cu bani reali") si copy-ul
+            de doua sectiuni mai jos (-0.2R, 45% WR).
+
+            Le-am inlocuit cu limitele reale din config.py, care sunt oricum
+            argumentul mai bun: nu performanta promisa, ci disciplina impusa.
+          */}
+          <div className="grid gap-6 md:grid-cols-3">
             {[
-              { title: "Win Rate", value: "67.3%", change: "+2.1%", trend: "up" as const, icon: TrendingUp, color: "var(--long)" },
-              { title: "Profit Factor", value: "2.41", change: "+0.18", trend: "up" as const, icon: Cpu, color: "var(--long)" },
-              { title: "Max Drawdown", value: "8.7%", change: "-1.2%", trend: "down" as const, icon: Shield, color: "var(--short)" },
+              {
+                label: "Risc per tranzacție",
+                value: "1%",
+                note: "fix din capital. Levierul rezultă din distanța până la stop, nu invers.",
+                icon: Shield,
+              },
+              {
+                label: "Levier maxim",
+                value: "5x",
+                note: "plafon dur în risk engine. Peste el semnalul e respins, indiferent de scor.",
+                icon: Cpu,
+              },
+              {
+                label: "Expectanță backtest",
+                value: "−0.2R",
+                note: "negativă, și scrie asta pe consolă. De aceea execuția automată e oprită.",
+                icon: TrendingUp,
+                tone: "short" as const,
+              },
             ].map((stat, i) => (
               <motion.div
-                key={stat.title}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 1.5 + i * 0.1, ease: [0.23, 1, 0.32, 1] }}
-                className="panel p-6 relative overflow-hidden group"
-                style={{ perspective: 400 }}
+                key={stat.label}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-80px" }}
+                transition={{ duration: 0.45, delay: i * 0.08, ease: [0.23, 1, 0.32, 1] }}
+                className="panel p-6"
               >
-                <motion.div
-                  style={{
-                    transform: `rotateX(${rotateX.get()}deg) rotateY(${rotateY.get()}deg)`,
-                    transformStyle: "preserve-3d",
-                  }}
-                  className="relative z-10"
+                <div className="mb-4 flex items-start justify-between">
+                  <stat.icon
+                    className="h-5 w-5"
+                    strokeWidth={1.5}
+                    style={{ color: stat.tone === "short" ? "var(--short)" : "var(--text-mid)" }}
+                    aria-hidden="true"
+                  />
+                  <span className="label" style={{ color: "var(--text-lo)" }}>
+                    {stat.label}
+                  </span>
+                </div>
+                <div
+                  className="num mb-2 font-mono text-4xl font-medium md:text-5xl"
+                  style={{ color: stat.tone === "short" ? "var(--short)" : "var(--text-hi)" }}
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <stat.icon className="w-5 h-5" style={{ color: stat.color }} />
-                    <span className="label" style={{ color: "var(--text-lo)" }}>
-                      {stat.title}
-                    </span>
-                  </div>
-                  <div className="num font-mono text-4xl md:text-5xl font-medium mb-2" style={{ color: "var(--text-hi)" }}>
-                    {stat.value}
-                  </div>
-                  <div
-                    className="flex items-center gap-2 font-mono text-sm"
-                    style={{ color: stat.trend === "up" ? "var(--long)" : "var(--short)" }}
-                  >
-                    <span>{stat.change}</span>
-                    <span className="label" style={{ color: "var(--text-lo)" }}>vs luna trecută</span>
-                  </div>
-
-                  {/* Mini sparkline */}
-                  <div className="mt-6 h-16 relative">
-                    <Sparkline data={generateSparklineData(stat.trend)} color={stat.color} />
-                  </div>
-                </motion.div>
-
-                {/* Glow accent on hover */}
-                <motion.div
-                  className="absolute inset-0 pointer-events-none"
-                  style={{
-                    background: `radial-gradient(circle at var(--mx, 50%) var(--my, 50%), ${stat.color}15 0%, transparent 60%)`,
-                    opacity: 0,
-                  }}
-                  animate={{ opacity: 0.5 }}
-                  transition={{ duration: 300 }}
-                />
+                  {stat.value}
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--text-mid)" }}>
+                  {stat.note}
+                </p>
               </motion.div>
             ))}
           </div>
@@ -368,9 +389,9 @@ export function LandingHero() {
 
       {/* Scroll indicator */}
       <motion.div
-        animate={{ y: [0, 10, 0] }}
+        animate={reduceMotion ? undefined : { y: [0, 10, 0] }}
         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+        className="absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2"
         style={{ color: "var(--text-lo)" }}
       >
         <span className="label">Scroll</span>
@@ -382,51 +403,15 @@ export function LandingHero() {
   );
 }
 
-/* Mini sparkline component */
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  const width = 100;
-  const height = 48;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - (v / 100) * height;
-    return `${x},${y}`;
-  }).join(" ");
-
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
-      <defs>
-        <linearGradient id="sparkline-gradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.6" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path
-        d={`M${points}`}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ filter: "drop-shadow(0 0 4px currentColor)" }}
-      />
-      <path
-        d={`M${points} L${width},${height} L0,${height} Z`}
-        fill="url(#sparkline-gradient)"
-      />
-    </svg>
-  );
-}
-
-function generateSparklineData(trend: "up" | "down"): number[] {
-  const base = trend === "up" ? 45 : 55;
-  const data = [base];
-  for (let i = 1; i < 20; i++) {
-    const drift = trend === "up" ? 1.5 : -1.5;
-    const noise = (Math.random() - 0.5) * 8;
-    const next = Math.max(5, Math.min(95, data[i - 1] + drift + noise));
-    data.push(next);
-  }
-  return data;
-}
+/*
+ * Sparkline si generateSparklineData au fost sterse odata cu cifrele inventate.
+ * Aveau doua defecte care meritau mentionate, ca sa nu reapara:
+ *  - toate cele trei instante foloseau acelasi `id="sparkline-gradient"`, deci
+ *    browserul rezolva `url(#...)` la primul si toate trei se umpleau cu
+ *    aceeasi culoare;
+ *  - datele veneau din Math.random() apelat in timpul randarii, deci serverul
+ *    si clientul desenau curbe diferite - hydration mismatch garantat.
+ * Daca revine un grafic aici, trebuie sa arate date reale din /api/backtest.
+ */
 
 export default LandingHero;
